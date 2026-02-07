@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CodeMentor - WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .chat-container {
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f8f9fa;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background: #007bff;
+            color: white;
+            text-align: right;
+        }
+        .assistant-message {
+            background: white;
+            border: 1px solid #ddd;
+        }
+        .streaming {
+            opacity: 0.7;
+            font-style: italic;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        input {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 5px;
+            font-size: 14px;
+            color: #666;
+        }
+        .connected { color: green; }
+        .disconnected { color: red; }
+    </style>
+</head>
+<body>
+    <h1>🤖 CodeMentor - WebSocket Chat</h1>
+    
+    <div class="status" id="status">
+        <span class="disconnected">⚫ Disconnected</span>
+    </div>
+    
+    <div class="chat-container" id="chatContainer"></div>
+    
+    <div class="input-container">
+        <input 
+            type="text" 
+            id="messageInput" 
+            placeholder="Ask a coding question..."
+            disabled
+        >
+        <button id="sendButton" disabled>Send</button>
+        <button id="connectButton">Connect</button>
+    </div>
+    
+    <script>
+        let ws = null;
+        let currentMessage = null;
+        
+        const chatContainer = document.getElementById('chatContainer');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const connectButton = document.getElementById('connectButton');
+        const statusDiv = document.getElementById('status');
+        
+        function updateStatus(connected) {
+            if (connected) {
+                statusDiv.innerHTML = '<span class="connected">🟢 Connected</span>';
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                connectButton.textContent = 'Disconnect';
+            } else {
+                statusDiv.innerHTML = '<span class="disconnected">⚫ Disconnected</span>';
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                connectButton.textContent = 'Connect';
+            }
+        }
+        
+        function addMessage(role, content, isStreaming = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message ${isStreaming ? 'streaming' : ''}`;
+            messageDiv.textContent = content;
+            
+            if (role === 'assistant' && isStreaming) {
+                messageDiv.id = 'streaming-message';
+            }
+            
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            return messageDiv;
+        }
+        
+        function updateStreamingMessage(content) {
+            let messageDiv = document.getElementById('streaming-message');
+            if (!messageDiv) {
+                messageDiv = addMessage('assistant', '', true);
+            }
+            messageDiv.textContent = content;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function finalizeStreamingMessage() {
+            const messageDiv = document.getElementById('streaming-message');
+            if (messageDiv) {
+                messageDiv.classList.remove('streaming');
+                messageDiv.id = '';
+            }
+        }
+        
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+                return;
+            }
+            
+            ws = new WebSocket('ws://localhost:8000/api/ws/ws');
+            
+            ws.onopen = () => {
+                console.log('✅ WebSocket connected');
+                updateStatus(true);
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'start') {
+                    console.log('🌊 Streaming started');
+                    currentMessage = '';
+                } else if (data.type === 'chunk') {
+                    currentMessage += data.content;
+                    updateStreamingMessage(currentMessage);
+                } else if (data.type === 'done') {
+                    console.log('✅ Streaming complete');
+                    finalizeStreamingMessage();
+                    currentMessage = null;
+                } else if (data.type === 'error') {
+                    console.error('❌ Error:', data.content);
+                    addMessage('assistant', `Error: ${data.content}`);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('🔌 WebSocket disconnected');
+                updateStatus(false);
+                ws = null;
+            };
+            
+            ws.onerror = (error) => {
+                console.error('❌ WebSocket error:', error);
+            };
+        }
+        
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            
+            if (!message || !ws || ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            
+            // Add user message to chat
+            addMessage('user', message);
+            
+            // Send to server
+            ws.send(JSON.stringify({
+                message: message,
+                temperature: 0.7
+            }));
+            
+            // Clear input
+            messageInput.value = '';
+        }
+        
+        // Event listeners
+        connectButton.addEventListener('click', connect);
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
