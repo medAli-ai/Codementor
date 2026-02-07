@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CodeMentor - Streaming Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 50px auto; padding: 20px; }
+        #response {
+            border: 2px solid #007bff;
+            padding: 15px;
+            min-height: 150px;
+            background: #f0f8ff;
+            font-size: 18px;
+            line-height: 1.6;
+        }
+        input { width: 70%; padding: 10px; font-size: 16px; margin: 10px 0; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin: 5px; }
+        #debug {
+            background: #fffacd;
+            border: 2px solid #ffa500;
+            padding: 10px;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .chunk-highlight {
+            background-color: yellow;
+            animation: flash 0.3s;
+        }
+        @keyframes flash {
+            0% { background-color: yellow; }
+            100% { background-color: transparent; }
+        }
+    </style>
+</head>
+<body>
+    <h1>🤖 CodeMentor - Streaming Debug Mode</h1>
+    
+    <div>
+        <input 
+            id="message" 
+            type="text" 
+            placeholder="Try: Count from 1 to 10"
+            value="Count from 1 to 10"
+        >
+        <br>
+        <button onclick="sendMessage()">Send</button>
+        <button onclick="clearResponse()">Clear</button>
+    </div>
+    
+    <h3>Response: <span id="chunkCounter"></span></h3>
+    <div id="response"></div>
+    
+    <h3>Debug Log:</h3>
+    <div id="debug"></div>
+    
+    <script>
+        const responseDiv = document.getElementById('response');
+        const debugDiv = document.getElementById('debug');
+        const chunkCounter = document.getElementById('chunkCounter');
+        
+        let chunkCount = 0;
+        let startTime = 0;
+        
+        function addDebug(msg) {
+            const now = Date.now();
+            const elapsed = ((now - startTime) / 1000).toFixed(2);
+            const timestamp = new Date(now).toLocaleTimeString();
+            debugDiv.innerHTML += `<div>[${elapsed}s] ${timestamp} - ${msg}</div>`;
+            debugDiv.scrollTop = debugDiv.scrollHeight;
+        }
+        
+        async function sendMessage() {
+            const message = document.getElementById('message').value;
+            
+            if (!message.trim()) {
+                alert('Please enter a message');
+                return;
+            }
+            
+            // Reset
+            responseDiv.innerHTML = '';
+            debugDiv.innerHTML = '';
+            chunkCount = 0;
+            startTime = Date.now();
+            chunkCounter.textContent = '';
+            
+            addDebug('🚀 <strong>STARTING REQUEST</strong>');
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/chat/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message, temperature: 0.7 })
+                });
+                
+                addDebug('✅ Connection established');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                addDebug('📖 Reading stream...');
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) {
+                        addDebug('🏁 <strong>STREAM ENDED</strong>');
+                        break;
+                    }
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const messages = buffer.split('\n\n');
+                    buffer = messages.pop() || '';
+                    
+                    for (const message of messages) {
+                        if (message.startsWith('data: ')) {
+                            const data = JSON.parse(message.substring(6));
+                            
+                            if (data.content) {
+                                chunkCount++;
+                                
+                                // Create span for this chunk
+                                const span = document.createElement('span');
+                                span.textContent = data.content;
+                                span.className = 'chunk-highlight';
+                                responseDiv.appendChild(span);
+                                
+                                // Update counter
+                                chunkCounter.textContent = `(${chunkCount} chunks)`;
+                                
+                                // Log with preview
+                                const preview = data.content.length > 30 
+                                    ? data.content.substring(0, 30) + '...' 
+                                    : data.content;
+                                addDebug(`📦 Chunk ${chunkCount}: "${preview}"`);
+                                
+                                // Scroll
+                                responseDiv.scrollTop = responseDiv.scrollHeight;
+                            }
+                            
+                            if (data.done) {
+                                addDebug(`✅ <strong>COMPLETE! Total: ${chunkCount} chunks</strong>`);
+                            }
+                            
+                            if (data.error) {
+                                addDebug(`❌ ERROR: ${data.error}`);
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                responseDiv.textContent = `Error: ${error.message}`;
+                addDebug(`❌ EXCEPTION: ${error.message}`);
+            }
+        }
+        
+        function clearResponse() {
+            responseDiv.innerHTML = '';
+            debugDiv.innerHTML = '';
+            chunkCount = 0;
+            chunkCounter.textContent = '';
+        }
+        
+        document.getElementById('message').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
