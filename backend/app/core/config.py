@@ -16,6 +16,15 @@ class Settings(BaseSettings):
     # LLM Configuration
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.3"
+
+
+    # Database (NEW)
+    DATABASE_URL: str
+    
+    # Security (NEW)
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     class Config:
         env_file = ".env"
