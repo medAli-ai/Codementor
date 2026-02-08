@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import logging
 
 from app.core.config import settings
-from app.routes import health, chat, websocket
+from app.routes import health, chat, websocket, auth
 
 
 # Configure logging
@@ -23,6 +23,8 @@ app = FastAPI(
     docs_url="/api/docs",  # Swagger UI
     redoc_url="/api/redoc",  # ReDoc UI
 )
+
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Add CORS middleware (allows frontend to communicate with backend)
 app.add_middleware(
@@ -67,10 +69,9 @@ async def root():
 # Include routers
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(websocket.router, prefix="/api/ws", tags=["websocket"])
+app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])  
 
-# Simple test endpoint
 @app.get("/api/test")
 async def test():
     """
