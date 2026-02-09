@@ -1,222 +1,216 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>CodeMentor - WebSocket Test</title>
+    <title>WebSocket Chat Test</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 900px;
+            max-width: 800px;
             margin: 50px auto;
             padding: 20px;
         }
-        .chat-container {
-            border: 2px solid #007bff;
-            border-radius: 8px;
+        #status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        #chat-container {
+            border: 1px solid #ddd;
             height: 400px;
             overflow-y: auto;
             padding: 15px;
-            background: #f8f9fa;
             margin-bottom: 20px;
+            background-color: #f5f5f5;
         }
         .message {
             margin: 10px 0;
             padding: 10px;
-            border-radius: 5px;
+            border-radius: 8px;
+            max-width: 70%;
         }
         .user-message {
-            background: #007bff;
+            background-color: #007bff;
             color: white;
+            margin-left: auto;
             text-align: right;
         }
         .assistant-message {
-            background: white;
-            border: 1px solid #ddd;
+            background-color: white;
+            color: black;
+            margin-right: auto;
         }
-        .streaming {
-            opacity: 0.7;
-            font-style: italic;
-        }
-        .input-container {
+        .input-group {
             display: flex;
             gap: 10px;
+            margin-bottom: 10px;
         }
-        input {
+        input[type="text"] {
             flex: 1;
             padding: 10px;
-            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        input[type="number"] {
+            width: 100px;
+            padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
         button {
             padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
+            background-color: #007bff;
+            color: white;
             border: none;
             border-radius: 4px;
-            background: #007bff;
-            color: white;
+            cursor: pointer;
         }
+        button:hover { background-color: #0056b3; }
         button:disabled {
-            background: #ccc;
+            background-color: #6c757d;
             cursor: not-allowed;
         }
-        .status {
-            margin: 10px 0;
-            padding: 5px;
-            font-size: 14px;
-            color: #666;
-        }
-        .connected { color: green; }
-        .disconnected { color: red; }
     </style>
 </head>
 <body>
-    <h1>🤖 CodeMentor - WebSocket Chat</h1>
+    <h1>WebSocket Chat Test (With Auth & Database)</h1>
     
-    <div class="status" id="status">
-        <span class="disconnected">⚫ Disconnected</span>
+    <div id="status" class="disconnected">⚫ Disconnected</div>
+    
+    <div class="input-group">
+        <input type="text" id="token-input" placeholder="JWT Token (get from /api/auth/login)" />
+        <button id="connect-btn" onclick="connect()">Connect</button>
     </div>
     
-    <div class="chat-container" id="chatContainer"></div>
-    
-    <div class="input-container">
-        <input 
-            type="text" 
-            id="messageInput" 
-            placeholder="Ask a coding question..."
-            disabled
-        >
-        <button id="sendButton" disabled>Send</button>
-        <button id="connectButton">Connect</button>
+    <div class="input-group">
+        <input type="number" id="conversation-input" placeholder="Conversation ID (optional)" />
+        <input type="number" id="temperature-input" value="0.7" step="0.1" min="0" max="1" />
     </div>
     
-    <script>
-        let ws = null;
-        let currentMessage = null;
+    <div id="chat-container"></div>
+    
+    <div class="input-group">
+        <input type="text" id="message-input" placeholder="Type your message..." disabled />
+        <button id="send-btn" onclick="sendMessage()" disabled>Send</button>
+    </div>
+    
+    
+
+<script>
+    let ws = null;
+    let currentMessageDiv = null;  // Track the current message element
+    let currentMessage = '';       // Accumulate message content
+    
+    function connect() {
+        const token = document.getElementById('token-input').value.trim();
         
-        const chatContainer = document.getElementById('chatContainer');
-        const messageInput = document.getElementById('messageInput');
-        const sendButton = document.getElementById('sendButton');
-        const connectButton = document.getElementById('connectButton');
-        const statusDiv = document.getElementById('status');
-        
-        function updateStatus(connected) {
-            if (connected) {
-                statusDiv.innerHTML = '<span class="connected">🟢 Connected</span>';
-                messageInput.disabled = false;
-                sendButton.disabled = false;
-                connectButton.textContent = 'Disconnect';
-            } else {
-                statusDiv.innerHTML = '<span class="disconnected">⚫ Disconnected</span>';
-                messageInput.disabled = true;
-                sendButton.disabled = true;
-                connectButton.textContent = 'Connect';
-            }
+        if (!token) {
+            alert('Please enter JWT token');
+            return;
         }
         
-        function addMessage(role, content, isStreaming = false) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}-message ${isStreaming ? 'streaming' : ''}`;
-            messageDiv.textContent = content;
-            
-            if (role === 'assistant' && isStreaming) {
-                messageDiv.id = 'streaming-message';
-            }
-            
-            chatContainer.appendChild(messageDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-            
-            return messageDiv;
+        // Close existing connection
+        if (ws) {
+            ws.close();
         }
         
-        function updateStreamingMessage(content) {
-            let messageDiv = document.getElementById('streaming-message');
-            if (!messageDiv) {
-                messageDiv = addMessage('assistant', '', true);
-            }
-            messageDiv.textContent = content;
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
+        // Connect with token in query parameter
+        ws = new WebSocket(`ws://localhost:8000/api/ws/ws?token=${token}`);
         
-        function finalizeStreamingMessage() {
-            const messageDiv = document.getElementById('streaming-message');
-            if (messageDiv) {
-                messageDiv.classList.remove('streaming');
-                messageDiv.id = '';
-            }
-        }
+        ws.onopen = () => {
+            document.getElementById('status').className = 'connected';
+            document.getElementById('status').textContent = '🟢 Connected';
+            document.getElementById('message-input').disabled = false;
+            document.getElementById('send-btn').disabled = false;
+            console.log('Connected to WebSocket');
+        };
         
-        function connect() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.close();
-                return;
-            }
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log('Received:', data);  // Debug log
             
-            ws = new WebSocket('ws://localhost:8000/api/ws/ws');
-            
-            ws.onopen = () => {
-                console.log('✅ WebSocket connected');
-                updateStatus(true);
-            };
-            
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
+            if (data.type === 'start') {
+                // Start of new message - create placeholder
+                currentMessage = '';
+                currentMessageDiv = addMessage('', 'assistant');
                 
-                if (data.type === 'start') {
-                    console.log('🌊 Streaming started');
-                    currentMessage = '';
-                } else if (data.type === 'chunk') {
-                    currentMessage += data.content;
-                    updateStreamingMessage(currentMessage);
-                } else if (data.type === 'done') {
-                    console.log('✅ Streaming complete');
-                    finalizeStreamingMessage();
-                    currentMessage = null;
-                } else if (data.type === 'error') {
-                    console.error('❌ Error:', data.content);
-                    addMessage('assistant', `Error: ${data.content}`);
+            } else if (data.type === 'chunk') {
+                // Accumulate and update message
+                currentMessage += data.content;
+                if (currentMessageDiv) {
+                    currentMessageDiv.textContent = currentMessage;
+                    // Auto-scroll
+                    const container = document.getElementById('chat-container');
+                    container.scrollTop = container.scrollHeight;
                 }
-            };
-            
-            ws.onclose = () => {
-                console.log('🔌 WebSocket disconnected');
-                updateStatus(false);
-                ws = null;
-            };
-            
-            ws.onerror = (error) => {
-                console.error('❌ WebSocket error:', error);
-            };
+                
+            } else if (data.type === 'done') {
+                // Message complete
+                console.log('Message saved!');
+                console.log('Conversation ID:', data.conversation_id);
+                console.log('Message ID:', data.message_id);
+                currentMessageDiv = null;  // Reset
+                
+            } else if (data.type === 'error') {
+                alert('Error: ' + data.message);
+            }
+        };
+        
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            alert('WebSocket error - check console');
+        };
+        
+        ws.onclose = () => {
+            document.getElementById('status').className = 'disconnected';
+            document.getElementById('status').textContent = '⚫ Disconnected';
+            document.getElementById('message-input').disabled = true;
+            document.getElementById('send-btn').disabled = true;
+            console.log('Disconnected from WebSocket');
+        };
+    }
+    
+    function sendMessage() {
+        const input = document.getElementById('message-input');
+        const message = input.value.trim();
+        
+        if (!message || !ws || ws.readyState !== WebSocket.OPEN) {
+            return;
         }
         
-        function sendMessage() {
-            const message = messageInput.value.trim();
-            
-            if (!message || !ws || ws.readyState !== WebSocket.OPEN) {
-                return;
-            }
-            
-            // Add user message to chat
-            addMessage('user', message);
-            
-            // Send to server
-            ws.send(JSON.stringify({
-                message: message,
-                temperature: 0.7
-            }));
-            
-            // Clear input
-            messageInput.value = '';
-        }
+        const conversationId = document.getElementById('conversation-input').value;
+        const temperature = parseFloat(document.getElementById('temperature-input').value);
         
-        // Event listeners
-        connectButton.addEventListener('click', connect);
-        sendButton.addEventListener('click', sendMessage);
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendMessage();
-            }
-        });
-    </script>
+        // Display user message
+        addMessage(message, 'user');
+        
+        // Send to server
+        ws.send(JSON.stringify({
+            message: message,
+            conversation_id: conversationId ? parseInt(conversationId) : null,
+            temperature: temperature
+        }));
+        
+        input.value = '';
+    }
+    
+    function addMessage(text, sender) {
+        const container = document.getElementById('chat-container');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${sender}-message`;
+        messageDiv.textContent = text;
+        container.appendChild(messageDiv);
+        container.scrollTop = container.scrollHeight;
+        return messageDiv;  // Return element for updates
+    }
+    
+    // Send on Enter key
+    document.getElementById('message-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    });
+</script>
 </body>
 </html>
