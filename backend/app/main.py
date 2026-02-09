@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import logging
 
 from app.core.config import settings
-from app.routes import health, chat, websocket, auth
+from app.routes import health, chat, websocket, auth, conversations
 
 
 # Configure logging
@@ -71,6 +71,7 @@ app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(websocket.router, prefix="/api/ws", tags=["websocket"])
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])  
+app.include_router(conversations.router, prefix="/api/conversations", tags=["conversations"])
 
 @app.get("/api/test")
 async def test():
