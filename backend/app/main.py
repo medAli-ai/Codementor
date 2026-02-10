@@ -30,7 +30,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # React app (future)
+        "http://localhost:5173",  # React app (future)
         "http://localhost:8000",  # Same origin
         "http://127.0.0.1:8000",  # Alternative localhost
         "null"  # For file:// protocol (development only!)
