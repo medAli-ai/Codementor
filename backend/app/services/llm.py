@@ -42,6 +42,14 @@ Guidelines:
 - Adapt explanations to the student's level
 - Focus on understanding, not just memorization
 
+When explaining concepts:
+- Use clear, structured explanations
+- Provide practical code examples
+- For mathematical expressions, ALWAYS use LaTeX notation:
+  - Inline math: $expression$ (e.g., $O(n^2)$, $O(\log n)$)
+  - Block math: $$expression$$ for standalone formulas
+- Use markdown for formatting (headers, bold, lists, code blocks)
+
 Remember: Your goal is to help students truly understand concepts, not just pass exams."""
 
     def __init__(self):
