@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { conversationsAPI, streamMessage } from '../services/api';
 import MessageBubble from '../components/MessageBubble';
 

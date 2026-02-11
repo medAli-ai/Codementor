@@ -1,43 +1,40 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useState, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/useAuth';
 
 function Login() {
-  // Form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
-  // UI state
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  
-  // Hooks
-  const { login } = useAuth();        // Get login function from context
-  const navigate = useNavigate();     // For redirecting after login
+
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    document.title = 'Login - CodeMentor';
+    if (location.state?.message) {
+      setSuccess(location.state.message);
+    }
+  }, [location]);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();  // Prevent page refresh on form submit
-    
-    // Reset error
+    e.preventDefault();
     setError('');
-    
-    // Basic validation
+    setSuccess('');
+
     if (!email || !password) {
       setError('Please fill in all fields');
       return;
     }
-    
+
     setLoading(true);
-    
     try {
-      // Call login from AuthContext
       await login(email, password);
-      
-      // Redirect to chat on success
       navigate('/chat');
-      
     } catch (err) {
-      // Show error message
       const message = err.response?.data?.detail || 'Login failed. Please try again.';
       setError(message);
     } finally {
@@ -48,12 +45,19 @@ function Login() {
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        
+
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-blue-600">🎓 CodeMentor</h1>
           <p className="text-gray-500 mt-2">Sign in to your account</p>
         </div>
+
+        {/* Success Message */}
+        {success && (
+          <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-lg mb-6">
+            ✅ {success}
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (
@@ -64,12 +68,9 @@ function Login() {
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          
-          {/* Email Field */}
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input
               type="email"
               value={email}
@@ -80,11 +81,8 @@ function Login() {
             />
           </div>
 
-          {/* Password Field */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
               type="password"
               value={password}
@@ -95,7 +93,6 @@ function Login() {
             />
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
@@ -106,7 +103,6 @@ function Login() {
 
         </form>
 
-        {/* Register Link */}
         <p className="text-center text-gray-500 mt-6">
           No account?{' '}
           <Link to="/register" className="text-blue-600 hover:underline font-medium">

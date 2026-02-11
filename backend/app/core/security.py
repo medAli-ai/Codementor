@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 import hashlib
 import base64
+import secrets
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from app.core.config import settings
@@ -65,3 +66,27 @@ def decode_access_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+def generate_refresh_token() -> str:
+    """Generate a secure random refresh token."""
+    return secrets.token_urlsafe(64)
+
+def create_tokens(user, db) -> dict:
+    """
+    Create both access and refresh tokens.
+    - Access token: short-lived JWT (30 min)
+    - Refresh token: long-lived random string stored in DB (30 days)
+    """
+    access_token = create_access_token(data={"sub": user.email})
+    refresh_token = generate_refresh_token()
+
+    # Store refresh token in database
+    user.refresh_token = refresh_token
+    db.commit()
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
