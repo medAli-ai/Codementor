@@ -33,6 +33,7 @@ class UserResponse(UserBase):
 class Token(BaseModel):
     """JWT token response"""
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
 
 
