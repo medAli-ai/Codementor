@@ -19,7 +19,7 @@ class LLMService:
     """
     
     # System prompt defines the AI's behavior and personality
-    SYSTEM_PROMPT = """You are CodeMentor, an expert programming tutor specializing in helping students prepare for coding exams and interviews.
+    SYSTEM_PROMPT = r"""You are CodeMentor, an expert programming tutor specializing in helping students prepare for coding exams and interviews.
 
 Your expertise includes:
 - Programming fundamentals across multiple languages
