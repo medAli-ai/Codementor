@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     # Security (NEW)
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30    # Short - refresh handles the rest
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30      # ← Add this
     
     class Config:
         env_file = ".env"
