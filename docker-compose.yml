@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (for user data, conversations, messages)
+  postgres:
+    image: postgres:16
+    container_name: codementor_postgres
+    environment:
+      POSTGRES_DB: codementor
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Qdrant Vector Database (for RAG - programming books embeddings)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: codementor_qdrant
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC (optional)
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Backend API (if you want to containerize it)
+  # backend:
+  #   build: ./backend
+  #   container_name: codementor_backend
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./backend:/app
+  #     - ./rag_data:/app/rag_data
+  #   environment:
+  #     - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/codementor
+  #     - QDRANT_HOST=qdrant
+  #   depends_on:
+  #     - postgres
+  #     - qdrant
+
+  # Optional: Frontend (if you want to containerize it)
+  # frontend:
+  #   build: ./frontend
+  #   container_name: codementor_frontend
+  #   ports:
+  #     - "5173:5173"
+  #   volumes:
+  #     - ./frontend:/app
+
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
