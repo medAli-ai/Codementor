@@ -1,71 +1,72 @@
+# backend/app/core/config.py
+
 from pydantic_settings import BaseSettings
-from functools import lru_cache
+from typing import Optional
+
 
 class Settings(BaseSettings):
-    """
-    Application settings loaded from environment variables.
-    
-    The @lru_cache on get_settings() ensures we only load config once.
-    """
-    # ========== Application ==========
+    # ============ Application ============
     APP_NAME: str = "CodeMentor"
-    DEBUG: bool = False
+    DEBUG: bool = True
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     
-    # ========== LLM Configuration ==========
-    OLLAMA_HOST: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "llama3.3"
-    
-    # ========== Database ==========
+    # ============ Database ============
     DATABASE_URL: str
     
-    # ========== Security ==========
+    # ============ JWT ============
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     
-    # ========== RAG Configuration ==========
-    # Qdrant Vector Database
+    # ============ LLM (Ollama) ============
+    OLLAMA_HOST: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen2.5-coder:7b"
+    
+    # ============ RAG - Qdrant ============
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
-    QDRANT_COLLECTION: str = "programming_books"
+    QDRANT_URL: str = "http://localhost:6333"  # Constructed URL
+    QDRANT_COLLECTION: str = "codementor_rag"
     QDRANT_USE_GRPC: bool = False
     
-    # Embeddings
+    # ============ RAG - Embeddings ============
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIM: int = 384
-    EMBEDDING_DEVICE: str = "cpu"  # "cpu" or "cuda"
+    EMBEDDING_DEVICE: str = "cpu"
     
-    # Retrieval
-    RAG_TOP_K: int = 3              # How many chunks to retrieve
-    RAG_SCORE_THRESHOLD: float = 0.7  # Minimum similarity score (0-1)
+    # ============ RAG - Retrieval ============
+    RAG_TOP_K: int = 3
+    RAG_SCORE_THRESHOLD: float = 0.7
+    RAG_CHUNK_SIZE: int = 512
+    RAG_CHUNK_OVERLAP: int = 50
     
-    # Chunking
-    RAG_CHUNK_SIZE: int = 512       # Tokens per chunk
-    RAG_CHUNK_OVERLAP: int = 50     # Overlap between chunks
-    
-    # Data Paths
+    # ============ RAG - Directories ============
     RAG_DATA_DIR: str = "rag_data"
     RAG_BOOKS_DIR: str = "rag_data/books"
     RAG_PROCESSED_DIR: str = "rag_data/processed"
+    RAG_COLLECTION_NAME: str = "codementor_rag"
+    
+    # ============ RAG - Redis ============
+    REDIS_URL: str = "redis://localhost:6379/0"
+    
+    # ============ RAG - Celery ============
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
+    
+    # ============ RAG - File Upload ============
+    UPLOAD_DIR: str = "/tmp/codementor_uploads"
+    MAX_UPLOAD_SIZE: int = 52428800  # 50MB
+    
+    # ============ Default Superadmin ============
+    DEFAULT_SUPERADMIN_EMAIL: Optional[str] = None
+    DEFAULT_SUPERADMIN_USERNAME: Optional[str] = None
+    DEFAULT_SUPERADMIN_PASSWORD: Optional[str] = None
     
     class Config:
         env_file = ".env"
         case_sensitive = True
 
 
-@lru_cache()
-def get_settings() -> Settings:
-    """
-    Returns cached settings instance.
-    
-    lru_cache ensures this is only called once, even if
-    get_settings() is called multiple times.
-    """
-    return Settings()
-
-
-# Export a singleton instance for convenience
-settings = get_settings()
+settings = Settings()

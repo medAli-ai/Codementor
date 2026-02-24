@@ -1,9 +1,16 @@
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, Dict
 from datetime import datetime
+import logging
 
 from app.models import User, Conversation, Message
 from app.services.llm import llm_service
+from app.services.rag_service import get_rag_service
+
+logger = logging.getLogger(__name__)
+
+# Initialize RAG service
+rag_service = get_rag_service()
 
 
 def get_or_create_conversation(
@@ -88,9 +95,11 @@ def process_chat_message(
     user_id: int,
     temperature: float,
     db: Session
-) -> tuple[int, int, str]:
+) -> tuple[int, int, str, Optional[Dict]]:
     """
-    Process a chat message: save user message, get LLM response, save assistant message.
+    Process a chat message with RAG integration.
+    
+    🆕 NEW: Integrates RAG context from user's uploaded documents
     
     Args:
         user_message: User's message content
@@ -100,7 +109,7 @@ def process_chat_message(
         db: Database session
     
     Returns:
-        Tuple of (conversation_id, message_id, assistant_response)
+        Tuple of (conversation_id, message_id, assistant_response, rag_result)
     """
     # 1. Get or create conversation
     conversation = get_or_create_conversation(conversation_id, user_id, db)
@@ -113,11 +122,47 @@ def process_chat_message(
         db=db
     )
     
-    # 3. Get LLM response
-    messages = [{"role": "user", "content": user_message}]
+    # 🆕 3. Get RAG context (if applicable)
+    rag_result = None
+    enhanced_message = user_message
+    
+    try:
+        logger.info(f"🔍 Checking for RAG context...")
+        rag_context = rag_service.get_context(
+            query=user_message,
+            user_id=user_id
+        )
+        
+        if rag_context:
+            # RAG context found!
+            logger.info(f"✅ RAG context retrieved: {rag_context['chunks_count']} chunks from {len(rag_context['sources'])} documents")
+            
+            # Enhance message with context
+            enhanced_message = f"""Based on your uploaded documents:
+
+{rag_context['context']}
+
+Question: {user_message}
+"""
+            
+            # Store RAG metadata for response
+            rag_result = {
+                "sources": rag_context['sources'],
+                "chunks_count": rag_context['chunks_count'],
+                "detected_topic": rag_context['detected_topic']
+            }
+        else:
+            logger.info(f"ℹ️  No RAG context (not programming-related or no matching docs)")
+    
+    except Exception as e:
+        logger.warning(f"⚠️  RAG context retrieval failed: {e}")
+        # Continue without RAG if it fails - graceful degradation
+    
+    # 4. Get LLM response (with enhanced message if RAG was used)
+    messages = [{"role": "user", "content": enhanced_message}]
     assistant_response = llm_service.chat(messages, temperature)
     
-    # 4. Save assistant message
+    # 5. Save assistant message
     assistant_msg = save_message(
         conversation_id=conversation.id,
         role="assistant",
@@ -125,7 +170,7 @@ def process_chat_message(
         db=db
     )
     
-    return conversation.id, assistant_msg.id, assistant_response
+    return conversation.id, assistant_msg.id, assistant_response, rag_result
 
 
 async def process_chat_message_stream(
@@ -136,7 +181,9 @@ async def process_chat_message_stream(
     db: Session
 ):
     """
-    Process a streaming chat message: save user message, stream LLM response, save assistant message.
+    Process a streaming chat message with RAG integration.
+    
+    🆕 NEW: Integrates RAG context from user's uploaded documents
     
     Args:
         user_message: User's message content
@@ -159,15 +206,51 @@ async def process_chat_message_stream(
         db=db
     )
     
-    # 3. Stream LLM response and accumulate
-    messages = [{"role": "user", "content": user_message}]
+    # 🆕 3. Get RAG context (if applicable)
+    rag_result = None
+    enhanced_message = user_message
+    
+    try:
+        logger.info(f"🔍 Checking for RAG context...")
+        rag_context = rag_service.get_context(
+            query=user_message,
+            user_id=user_id
+        )
+        
+        if rag_context:
+            # RAG context found!
+            logger.info(f"✅ RAG context retrieved: {rag_context['chunks_count']} chunks")
+            
+            # Enhance message with context
+            enhanced_message = f"""Based on your uploaded documents:
+
+{rag_context['context']}
+
+Question: {user_message}
+"""
+            
+            # Store RAG metadata
+            rag_result = {
+                "sources": rag_context['sources'],
+                "chunks_count": rag_context['chunks_count'],
+                "detected_topic": rag_context['detected_topic']
+            }
+        else:
+            logger.info(f"ℹ️  No RAG context")
+    
+    except Exception as e:
+        logger.warning(f"⚠️  RAG context retrieval failed: {e}")
+        # Continue without RAG if it fails
+    
+    # 4. Stream LLM response and accumulate
+    messages = [{"role": "user", "content": enhanced_message}]
     accumulated_response = ""
     
     async for chunk in llm_service.chat_stream(messages, temperature):
         accumulated_response += chunk
         yield {"type": "chunk", "content": chunk}  # Yield chunks
     
-    # 4. Save complete assistant message
+    # 5. Save complete assistant message
     assistant_msg = save_message(
         conversation_id=conversation.id,
         role="assistant",
@@ -175,9 +258,10 @@ async def process_chat_message_stream(
         db=db
     )
     
-    # 5. Yield final metadata (conversation_id and message_id)
+    # 6. Yield final metadata (conversation_id, message_id, and RAG sources)
     yield {
         "type": "done",
         "conversation_id": conversation.id,
-        "message_id": assistant_msg.id
+        "message_id": assistant_msg.id,
+        "rag_result": rag_result  # 🆕 NEW: Include RAG metadata
     }

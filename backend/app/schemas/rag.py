@@ -1,0 +1,92 @@
+"""
+RAG Schemas (Request/Response Models)
+
+Pydantic models for RAG API endpoints.
+"""
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List
+from datetime import datetime
+from enum import Enum
+
+
+class TopicEnum(str, Enum):
+    """Supported programming topics."""
+    PYTHON = "python"
+    JAVA = "java"
+    JAVASCRIPT = "javascript"
+    TYPESCRIPT = "typescript"
+    CPP = "cpp"
+    CSHARP = "csharp"
+    GO = "go"
+    RUST = "rust"
+    PHP = "php"
+    RUBY = "ruby"
+    SWIFT = "swift"
+    KOTLIN = "kotlin"
+    SQL = "sql"
+    WEB = "web"
+    DATA_SCIENCE = "data-science"
+    MACHINE_LEARNING = "machine-learning"
+    ALGORITHMS = "algorithms"
+    SYSTEM_DESIGN = "system-design"
+
+
+class DocumentStatus(str, Enum):
+    """Document processing status."""
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class UploadResponse(BaseModel):
+    """Response after uploading a document."""
+    document_id: int
+    title: str
+    filename: str
+    topic: str
+    status: str
+    message: str = "Document uploaded successfully. Processing in background."
+    
+    class Config:
+        from_attributes = True
+
+
+class DocumentResponse(BaseModel):
+    """Single document details."""
+    id: int
+    title: str
+    filename: str
+    topic: str
+    user_id: Optional[int]
+    is_public: bool
+    status: str
+    error_message: Optional[str]
+    chunks_count: Optional[int]
+    file_size_bytes: Optional[int]
+    pages_count: Optional[int]
+    created_at: datetime
+    updated_at: Optional[datetime]
+    
+    class Config:
+        from_attributes = True
+
+
+class DocumentListResponse(BaseModel):
+    """List of documents with pagination."""
+    documents: List[DocumentResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class DocumentUploadRequest(BaseModel):
+    """Request for document upload (form data)."""
+    title: Optional[str] = Field(None, description="Document title (auto-generated if not provided)")
+    topic: TopicEnum = Field(..., description="Programming topic")
+    is_public: bool = Field(False, description="Make document publicly accessible")
+    
+    @validator('title')
+    def validate_title(cls, v):
+        if v and len(v) > 200:
+            raise ValueError('Title must be less than 200 characters')
+        return v

@@ -1,3 +1,4 @@
+cat > .gitignore << 'EOF'
 __pycache__/
 *.py[cod]
 .venv/
@@ -9,3 +10,16 @@ venv/
 node_modules/
 *.db
 rag-prototype/
+
+# Test data
+test_data/
+*.pdf
+
+# Backup files
+*.backup
+
+# Temporary scripts
+**/scripts/reindex_*.py
+
+# Uploads (user data)
+uploads/

@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import List, Optional
-
+from typing import List, Optional, Dict
 
 # ============ Message Schemas ============
 
@@ -10,11 +9,9 @@ class MessageBase(BaseModel):
     role: str = Field(..., description="'user' or 'assistant'")
     content: str = Field(..., min_length=1)
 
-
 class MessageCreate(MessageBase):
     """Schema for creating a message"""
     pass
-
 
 class MessageResponse(MessageBase):
     """Schema for message in responses"""
@@ -25,23 +22,19 @@ class MessageResponse(MessageBase):
     class Config:
         from_attributes = True
 
-
 # ============ Conversation Schemas ============
 
 class ConversationBase(BaseModel):
     """Base conversation schema"""
     title: str = Field(default="New Conversation", max_length=200)
 
-
 class ConversationCreate(ConversationBase):
     """Schema for creating a conversation"""
     pass
 
-
 class ConversationUpdate(BaseModel):
     """Schema for updating a conversation"""
     title: Optional[str] = Field(None, max_length=200)
-
 
 class ConversationResponse(ConversationBase):
     """Schema for conversation in responses"""
@@ -53,7 +46,6 @@ class ConversationResponse(ConversationBase):
     class Config:
         from_attributes = True
 
-
 class ConversationWithMessages(ConversationResponse):
     """Conversation with all its messages"""
     messages: List[MessageResponse] = []
@@ -61,8 +53,7 @@ class ConversationWithMessages(ConversationResponse):
     class Config:
         from_attributes = True
 
-
-# ============ Chat Schemas (Updated) ============
+# ============ Chat Schemas (Updated with RAG) ============
 
 class ChatRequest(BaseModel):
     """Request for chat endpoint"""
@@ -79,6 +70,11 @@ class ChatRequest(BaseModel):
             }
         }
 
+class RAGSource(BaseModel):
+    """Source document used for RAG context"""
+    title: str
+    document_id: int
+    score: float
 
 class ChatResponse(BaseModel):
     """Response from chat endpoint"""
@@ -86,3 +82,5 @@ class ChatResponse(BaseModel):
     message_id: int
     response: str
     model: str
+    sources: Optional[List[RAGSource]] = None  # 🆕 NEW: RAG sources used
+    rag_used: bool = False  # 🆕 NEW: Whether RAG context was used
