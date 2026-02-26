@@ -6,7 +6,7 @@ from datetime import timedelta
 from app.db.session import get_db
 from app.models.user import User
 from app.models.conversation import Conversation
-from app.schemas.user import UserCreate, UserResponse, Token
+from app.schemas.user import UserCreate, UserResponse, Token, RefreshRequest
 from app.core.security import verify_password, get_password_hash, create_tokens
 from app.core.config import settings
 from app.core.deps import get_current_active_user
@@ -80,3 +80,51 @@ def get_current_user_info(
     Get current user info (requires authentication)
     """
     return current_user
+
+@router.post("/refresh")
+def refresh_token(
+    body: RefreshRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Exchange a valid refresh token for a new access + refresh token pair.
+
+    WHY token rotation?
+    After this call the old refresh token is overwritten in the DB.
+    If a stolen token is used first, the legitimate user's next refresh
+    will fail (token mismatch) — alerting them to re-login.
+    """
+    # Look up user by the refresh token stored in DB
+    user = db.query(User).filter(
+        User.refresh_token == body.refresh_token
+    ).first()
+
+    # No match means invalid, expired, or already rotated token
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Inactive user"
+        )
+
+    # Issue new token pair — this overwrites user.refresh_token in DB
+    return create_tokens(user, db)
+
+@router.post("/logout")
+def logout(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Invalidate the refresh token so it can't be used again after logout.
+    The client must also clear its localStorage.
+    """
+    current_user.refresh_token = None
+    db.commit()
+    return {"message": "Logged out successfully"}
