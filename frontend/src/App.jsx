@@ -3,6 +3,7 @@ import { useAuth } from './context/useAuth';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Chat from './pages/Chat';
+import DocumentLibrary from './pages/DocumentLibrary';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -20,10 +21,19 @@ function App() {
           element={isLoggedIn ? <Navigate to="/chat" /> : <Register />}
         />
         <Route
-          path="/chat"
+          path="/chat/:conversationId?"
           element={
             <ProtectedRoute>
               <Chat />
+            </ProtectedRoute>
+          }
+        />
+        {/* NEW: Library page — same ProtectedRoute children pattern */}
+        <Route
+          path="/library"
+          element={
+            <ProtectedRoute>
+              <DocumentLibrary />
             </ProtectedRoute>
           }
         />
