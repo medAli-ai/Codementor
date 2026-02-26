@@ -3,6 +3,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+// NEW import
+import SourceCitations from './SourceCitations';
 
 function MessageBubble({ message }) {
   const isUser = message.role === 'user';
@@ -17,15 +19,15 @@ function MessageBubble({ message }) {
         }
         ${message.isLoading ? 'animate-pulse' : ''}
       `}>
-        {/* Role Label */}
+        {/* Role Label — unchanged */}
         <p className={`text-xs font-semibold mb-2 ${isUser ? 'text-blue-200' : 'text-gray-400'}`}>
-  {isUser ? '👤 You' : '🤖 CodeMentor'}
-  {message.isStreaming && (
-    <span className="ml-2 inline-block w-2 h-2 bg-blue-400 rounded-full animate-bounce" />
-  )}
-</p>
+          {isUser ? '👤 You' : '🤖 CodeMentor'}
+          {message.isStreaming && (
+            <span className="ml-2 inline-block w-2 h-2 bg-blue-400 rounded-full animate-bounce" />
+          )}
+        </p>
 
-        {/* Content */}
+        {/* Content — unchanged */}
         {isUser ? (
           <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
         ) : (
@@ -110,6 +112,11 @@ function MessageBubble({ message }) {
           >
             {message.content}
           </ReactMarkdown>
+        )}
+
+        {/* NEW: Source citations — only rendered on completed assistant messages */}
+        {!isUser && !message.isStreaming && (
+          <SourceCitations sources={message.sources || []} ragUsed={message.rag_used || false} />
         )}
       </div>
     </div>
