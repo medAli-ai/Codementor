@@ -88,6 +88,9 @@ api.interceptors.response.use(
   }
 );
 
+// ============================================================
+// AUTH — unchanged
+// ============================================================
 export const authAPI = {
   register: (email, username, password) =>
     api.post('/api/auth/register', { email, username, password }),
@@ -103,6 +106,9 @@ export const authAPI = {
   logout: () => api.post('/api/auth/logout'),
 };
 
+// ============================================================
+// CONVERSATIONS — unchanged
+// ============================================================
 export const conversationsAPI = {
   list: () => api.get('/api/conversations/'),
   create: (title = 'New Chat') => api.post('/api/conversations/', { title }),
@@ -111,35 +117,95 @@ export const conversationsAPI = {
   delete: (id) => api.delete('/api/conversations/' + id),
 };
 
+// ============================================================
+// CHAT (non-streaming) — unchanged
+// ============================================================
 export const chatAPI = {
   send: (message, conversationId = null, temperature = 0.7) =>
     api.post('/api/chat/', { message, conversation_id: conversationId, temperature }),
 };
 
-export const streamMessage = async (message, conversationId, temperature = 0.7, onChunk, onDone) => {
-  const token = localStorage.getItem('token');
+// ============================================================
+// STREAM MESSAGE
+// ============================================================
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) throw new Error('No refresh token available');
 
-  const response = await fetch('http://localhost:8000/api/chat/stream', {
+  // Use plain axios (not the api instance) to avoid triggering the interceptor
+  // again and causing an infinite refresh loop.
+  const res = await axios.post(API_URL + '/api/auth/refresh', {
+    refresh_token: refreshToken,
+  });
+
+  const { access_token, refresh_token: newRefreshToken } = res.data;
+  localStorage.setItem('token', access_token);
+  localStorage.setItem('refresh_token', newRefreshToken);
+  api.defaults.headers.common['Authorization'] = 'Bearer ' + access_token;
+
+  return access_token;
+}
+
+// ─── Helper: perform one fetch attempt to the stream endpoint ───────────────
+async function fetchStream(token, message, conversationId, temperature) {
+  return fetch('http://localhost:8000/api/chat/stream', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + token,
     },
-    body: JSON.stringify({ message, conversation_id: conversationId, temperature }),
+    body: JSON.stringify({
+      message,
+      conversation_id: conversationId,
+      temperature,
+    }),
   });
+}
+
+// ─── streamMessage ───────────────────────────────────────────────────────────
+// ONLY CHANGE from original: onDone now receives two extra args —
+//   sources (array) and ragUsed (bool) — from the backend's final
+//   SSE event. The rest of the function is identical.
+// Auto-refreshes token on 401 and retries once before giving up.
+export const streamMessage = async (
+  message,
+  conversationId,
+  temperature = 0.7,
+  onChunk,
+  onDone
+) => {
+  let token = localStorage.getItem('token');
+  let response = await fetchStream(token, message, conversationId, temperature);
+
+  // ── Auto-refresh on 401 ──────────────────────────────────────────────────
+  if (response.status === 401) {
+    try {
+      token = await refreshAccessToken();          // get fresh token
+      response = await fetchStream(               // retry once
+        token, message, conversationId, temperature
+      );
+    } catch {
+      // Refresh failed (expired / invalid) → force re-login
+      localStorage.removeItem('token');
+      localStorage.removeItem('refresh_token');
+      window.location.href = '/login';
+      return;
+    }
+  }
 
   if (!response.ok) {
     throw new Error('HTTP error! status: ' + response.status);
   }
 
-  const reader = response.body.getReader();
+  // ── Stream the response ───────────────────────────────────────────────────
+  const reader  = response.body.getReader();
   const decoder = new TextDecoder();
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
-    const text = decoder.decode(value);
+    const text  = decoder.decode(value);
     const lines = text.split('\n');
 
     for (const line of lines) {
@@ -149,14 +215,94 @@ export const streamMessage = async (message, conversationId, temperature = 0.7, 
         try {
           const parsed = JSON.parse(data);
           if (parsed.content) onChunk(parsed.content);
-          if (parsed.done) onDone(parsed.conversation_id, parsed.message_id);
+          if (parsed.done) onDone(
+            parsed.conversation_id,
+            parsed.message_id,
+            parsed.sources  ?? [],
+            parsed.rag_used ?? false,
+          );
           if (parsed.error) throw new Error(parsed.error);
         } catch (e) {
-          // Skip malformed JSON
+          // Skip malformed JSON chunks
         }
       }
     }
   }
+};
+
+// ============================================================
+// DOCUMENTS — NEW
+// ============================================================
+
+// Exported so DocumentUpload and DocumentLibrary dropdowns
+// always stay in sync with a single source of truth.
+export const DOCUMENT_TOPICS = [
+  { value: 'python',           label: 'Python' },
+  { value: 'java',             label: 'Java' },
+  { value: 'javascript',       label: 'JavaScript' },
+  { value: 'typescript',       label: 'TypeScript' },
+  { value: 'cpp',              label: 'C++' },
+  { value: 'csharp',           label: 'C#' },
+  { value: 'go',               label: 'Go' },
+  { value: 'rust',             label: 'Rust' },
+  { value: 'php',              label: 'PHP' },
+  { value: 'ruby',             label: 'Ruby' },
+  { value: 'swift',            label: 'Swift' },
+  { value: 'kotlin',           label: 'Kotlin' },
+  { value: 'sql',              label: 'SQL' },
+  { value: 'web',              label: 'Web (HTML/CSS)' },
+  { value: 'data-science',     label: 'Data Science' },
+  { value: 'machine-learning', label: 'Machine Learning' },
+  { value: 'algorithms',       label: 'Algorithms & DS' },
+  { value: 'system-design',    label: 'System Design' },
+];
+
+export const DOCUMENT_STATUSES = [
+  { value: 'processing', label: 'Processing' },
+  { value: 'completed',  label: 'Completed' },
+  { value: 'failed',     label: 'Failed' },
+];
+
+export const documentsAPI = {
+  /**
+   * Upload a PDF via multipart/form-data.
+   * axios sets Content-Type automatically when given FormData.
+   *
+   * @param {File}     file
+   * @param {string}   topic
+   * @param {string}   [title='']
+   * @param {boolean}  [isPublic=false]
+   * @param {Function} [onProgress] - (percent: number) => void
+   */
+  upload: (file, topic, title = '', isPublic = false, onProgress = null) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('topic', topic);
+    if (title) formData.append('title', title);
+    formData.append('is_public', isPublic ? '1' : '0');
+
+    return api.post('/api/rag/upload', formData, {
+      headers: { 'Content-Type': undefined },
+      onUploadProgress: onProgress
+        ? (evt) => {
+            const percent = evt.total
+              ? Math.round((evt.loaded * 100) / evt.total)
+              : 0;
+            onProgress(percent);
+          }
+        : undefined,
+    });
+  },
+
+  list: ({ topic = '', status = '', page = 1, page_size = 12 } = {}) => {
+    const params = { page, page_size };
+    if (topic)  params.topic  = topic;
+    if (status) params.status = status;
+    return api.get('/api/rag/documents', { params });
+  },
+
+  get:    (id) => api.get(`/api/rag/documents/${id}`),
+  delete: (id) => api.delete(`/api/rag/documents/${id}`),
 };
 
 export default api;
