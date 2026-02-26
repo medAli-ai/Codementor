@@ -51,3 +51,6 @@ class AdminUserCreate(UserCreate):
     Only admins can use this endpoint.
     """
     role: UserRole = UserRole.USER
+
+class RefreshRequest(BaseModel):
+    refresh_token: str

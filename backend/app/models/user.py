@@ -44,3 +44,4 @@ class User(Base):
     # Relationships
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
     rag_documents = relationship("RAGDocument", back_populates="user", cascade="all, delete-orphan")
+    refresh_token = Column(String, nullable=True)
