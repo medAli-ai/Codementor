@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     RAG_BOOKS_DIR: str = "rag_data/books"
     RAG_PROCESSED_DIR: str = "rag_data/processed"
     RAG_COLLECTION_NAME: str = "codementor_rag"
+    MAX_HISTORY_MESSAGES: int = 20
     
     # ============ RAG - Redis ============
     REDIS_URL: str = "redis://localhost:6379/0"
