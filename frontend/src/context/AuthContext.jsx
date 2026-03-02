@@ -1,4 +1,5 @@
 // @refresh reset
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
 
@@ -17,7 +18,7 @@ export function AuthProvider({ children }) {
           const response = await authAPI.getMe();
           setUser(response.data);
           setToken(savedToken);
-        } catch (error) {
+        } catch {
           localStorage.removeItem('token');
           localStorage.removeItem('refresh_token');
           setToken(null);
@@ -50,7 +51,7 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try {
       await authAPI.logout();
-    } catch (error) {
+    } catch  {
       // Continue logout even if API fails
     }
     localStorage.removeItem('token');
