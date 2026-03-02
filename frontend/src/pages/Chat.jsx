@@ -19,6 +19,7 @@ function Chat() {
   const [useRag, setUseRag] = useState(true);
 
   const messagesEndRef = useRef(null);
+  const skipConvLoadRef = useRef(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { conversationId: urlConversationId } = useParams();
@@ -42,6 +43,10 @@ function Chat() {
   const conv = conversations.find(c => c.id === parseInt(urlConversationId));
   if (!conv) return;
   if (currentConversation?.id === conv.id) return;
+  if (skipConvLoadRef.current) {          // ← ADD THIS
+  skipConvLoadRef.current = false;       // ← ADD THIS
+  return;                                // ← ADD THIS
+}
   setCurrentConversation(conv);
   conversationsAPI.get(conv.id)
     .then(res => setMessages(res.data.messages))
@@ -181,6 +186,7 @@ function Chat() {
           if (!currentConversation) {
             const newConv = await conversationsAPI.get(conversationId);
             setCurrentConversation(newConv.data);
+            skipConvLoadRef.current = true;
             navigate(`/chat/${conversationId}`);
             loadConversations();
           }
