@@ -33,21 +33,21 @@ function Chat() {
   // 2. When URL conversation ID changes, load that conversation
   //    Guard: skip if it's already the active conversation
   useEffect(() => {
-    if (!urlConversationId) {
-      // /chat with no ID → new conversation screen
-      setCurrentConversation(null);
-      setMessages([]);
-      return;
-    }
-    if (conversations.length === 0) return; // wait for sidebar to load
-    const conv = conversations.find(c => c.id === parseInt(urlConversationId));
-    if (!conv) return;
-    if (currentConversation?.id === conv.id) return; // already loaded
-    setCurrentConversation(conv);
-    conversationsAPI.get(conv.id)
-      .then(res => setMessages(res.data.messages))
-      .catch(err => console.error('Failed to load conversation:', err));
-  }, [urlConversationId, conversations]);
+  if (!urlConversationId) {
+    setCurrentConversation(null);
+    setMessages([]);
+    return;
+  }
+  if (conversations.length === 0) return;
+  const conv = conversations.find(c => c.id === parseInt(urlConversationId));
+  if (!conv) return;
+  if (currentConversation?.id === conv.id) return;
+  setCurrentConversation(conv);
+  conversationsAPI.get(conv.id)
+    .then(res => setMessages(res.data.messages))
+    .catch(err => console.error('Failed to load conversation:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [urlConversationId, conversations]);
 
   // 3. Auto-scroll to latest message
   useEffect(() => {

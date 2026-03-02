@@ -222,7 +222,7 @@ export const streamMessage = async (
             parsed.rag_used ?? false,
           );
           if (parsed.error) throw new Error(parsed.error);
-        } catch (e) {
+        } catch  {
           // Skip malformed JSON chunks
         }
       }

@@ -53,12 +53,19 @@ function SourceCitations({ sources = [], ragUsed = false }) {
                 className="flex items-center justify-between rounded-lg bg-gray-50 border border-gray-200 px-3 py-2"
               >
                 {/* Document name */}
-                <button
-                  onClick={() => navigate(`/library?highlight=${source.document_id}`)}
-                  className="text-xs text-gray-700 hover:text-blue-600 truncate text-left font-medium"
-                >
-                  📄 {source.title}
-                </button>
+                <div className="flex items-center gap-1.5 truncate">
+  <button
+    onClick={() => navigate(`/library?highlight=${source.document_id}`)}
+    className="text-xs text-gray-700 hover:text-blue-600 truncate text-left font-medium"
+  >
+    📄 {source.title}
+  </button>
+  {source.page_numbers?.length > 0 && (
+    <span className="text-xs text-gray-400 flex-shrink-0">
+      p.{source.page_numbers.join(', ')}
+    </span>
+  )}
+</div>
 
                 {/* Relevance badge */}
                 <span
