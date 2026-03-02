@@ -4,15 +4,14 @@ Indexer Service
 Processes PDFs and indexes them into Qdrant vector database.
 
 Pipeline:
-1. Extract text from PDF (pymupdf)
-2. Clean and normalize text
-3. Chunk text (SemanticChunker)
+1. Extract text from PDF (pymupdf) with page boundary tracking
+2. Chunk text (SemanticChunker)
+3. Map chunks to page numbers via character positions
 4. Generate embeddings (sentence-transformers)
 5. Upload to Qdrant with metadata
 """
 import logging
 import pymupdf  # PyMuPDF (fitz)
-import re
 from pathlib import Path
 from typing import List, Dict, Optional
 import uuid
@@ -71,81 +70,47 @@ class Indexer:
     
     def extract_pdf_text(self, pdf_path: str) -> tuple[str, dict]:
         """
-        Extract clean text from PDF using PyMuPDF.
+        Extract text from PDF using PyMuPDF's built-in text extraction.
         
-        Inspired by rag-ingest approach but simplified for RAG.
+        Uses page.get_text("text") for clean extraction and tracks
+        character positions of each page for post-chunking page mapping.
         
         Args:
             pdf_path: Path to PDF file
             
         Returns:
-            Tuple of (extracted_text, metadata_dict)
+            Tuple of (full_text, metadata_dict)
+            metadata includes page_boundaries: [(start_char, page_num), ...]
         """
         try:
             logger.info(f"📄 Extracting text from: {pdf_path}")
             
-            # Open PDF
             doc = pymupdf.open(pdf_path)
             
-            # Extract metadata
             metadata = {
                 "pages_count": len(doc),
                 "file_size_bytes": Path(pdf_path).stat().st_size,
-                "pdf_title": doc.metadata.get("title", ""),
-                "pdf_author": doc.metadata.get("author", "")
             }
             
-            # Extract text from all pages
-            text_parts = []
+            # Extract text per page, tracking character positions
+            page_boundaries = []  # [(start_char, page_num), ...]
+            cleaned_parts = []
+            current_pos = 0
             
             for page_num, page in enumerate(doc, 1):
-                # Get page dimensions
-                page_rect = page.rect
-                page_height = page_rect.height
-                
-                # Extract text blocks
-                blocks = page.get_text("dict")["blocks"]
-                page_text_parts = []
-                
-                for block in blocks:
-                    if block["type"] == 0:  # Text block
-                        block_rect = block["bbox"]
-                        
-                        # Skip headers and footers (top 50px, bottom 50px)
-                        if block_rect[1] < 50 or block_rect[3] > page_height - 50:
-                            continue
-                        
-                        # Extract text from lines
-                        block_text = []
-                        for line in block["lines"]:
-                            line_text = ""
-                            for span in line["spans"]:
-                                text = span["text"].strip()
-                                if text:
-                                    line_text += text + " "
-                            
-                            if line_text.strip():
-                                block_text.append(line_text.strip())
-                        
-                        # Join lines with space
-                        if block_text:
-                            page_text_parts.append(" ".join(block_text))
-                
-                # Join blocks with double newline
-                if page_text_parts:
-                    page_text = "\n\n".join(page_text_parts)
-                    text_parts.append(page_text)
-                    logger.debug(f"   Page {page_num}: {len(page_text)} chars extracted")
+                page_text = page.get_text("text").strip()
+                if page_text:
+                    page_boundaries.append((current_pos, page_num))
+                    cleaned_parts.append(page_text)
+                    current_pos += len(page_text) + 2  # +2 for "\n\n" separator
             
             doc.close()
             
-            # Combine all pages
-            full_text = "\n\n".join(text_parts)
-            
-            # Clean the text
-            full_text = self._clean_text(full_text)
+            full_text = "\n\n".join(cleaned_parts)
+            metadata["page_boundaries"] = page_boundaries
             
             logger.info(f"✅ Extracted {len(full_text)} characters from {metadata['pages_count']} pages")
+            logger.info(f"   Pages with text: {len(page_boundaries)}/{metadata['pages_count']}")
             
             return full_text, metadata
             
@@ -153,36 +118,52 @@ class Indexer:
             logger.error(f"❌ PDF extraction failed: {e}")
             raise
     
-    def _clean_text(self, text: str) -> str:
+    def _get_chunk_pages(
+        self,
+        chunk: str,
+        full_text: str,
+        page_boundaries: list[tuple[int, int]],
+        search_from: int = 0
+    ) -> tuple[list[int], int]:
         """
-        Clean extracted text.
+        Map a chunk to its page number(s) using character positions.
+        
+        Finds the chunk in full_text, then checks which page boundaries
+        it overlaps with.
         
         Args:
-            text: Raw extracted text
+            chunk: The text chunk to locate
+            full_text: The complete document text
+            page_boundaries: List of (start_char, page_num) tuples
+            search_from: Start searching from this position (sequential matching)
             
         Returns:
-            Cleaned text
+            Tuple of (page_numbers list, next_search_position)
         """
-        # Remove excessive whitespace
-        text = re.sub(r'\s+', ' ', text)
+        # Find chunk position (search sequentially to handle duplicate text)
+        start = full_text.find(chunk, search_from)
+        if start == -1:
+            # Fallback: search from beginning
+            start = full_text.find(chunk)
+        if start == -1:
+            return [], search_from
         
-        # Remove excessive newlines (keep max 2)
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        end = start + len(chunk)
         
-        # Remove page numbers (standalone digits)
-        text = re.sub(r'\n\d+\n', '\n', text)
+        # Find which pages this chunk overlaps
+        pages = set()
+        for i, (boundary_start, page_num) in enumerate(page_boundaries):
+            # Determine where this page ends
+            if i + 1 < len(page_boundaries):
+                boundary_end = page_boundaries[i + 1][0]
+            else:
+                boundary_end = len(full_text)
+            
+            # Check if chunk overlaps with this page's range
+            if start < boundary_end and end > boundary_start:
+                pages.add(page_num)
         
-        # Fix common OCR issues
-        text = text.replace('ﬁ', 'fi')
-        text = text.replace('ﬂ', 'fl')
-        text = text.replace('–', '-')
-        text = text.replace('—', '-')
-        
-        # Remove multiple spaces
-        text = re.sub(r' {2,}', ' ', text)
-        
-        # Strip and return
-        return text.strip()
+        return sorted(pages), end
     
     def _ensure_collection(self, collection_name: str, vector_size: int = None):
         """
@@ -195,7 +176,6 @@ class Indexer:
         vector_size = vector_size or self.embedder.get_dimension()
         
         try:
-            # Get existing collections
             collections = self.client.get_collections().collections
             collection_names = [c.name for c in collections]
             
@@ -225,7 +205,7 @@ class Indexer:
         metadata: dict
     ) -> int:
         """
-        Complete indexing pipeline: Extract → Chunk → Embed → Upload.
+        Complete indexing pipeline: Extract → Chunk → Map Pages → Embed → Upload.
         
         Args:
             pdf_path: Path to PDF file
@@ -240,7 +220,7 @@ class Indexer:
             logger.info(f"   PDF: {pdf_path}")
             logger.info(f"   Collection: {collection_name}")
             
-            # 1. Extract text from PDF
+            # 1. Extract text from PDF (with page boundaries)
             text, pdf_metadata = self.extract_pdf_text(pdf_path)
             
             if not text or len(text) < 100:
@@ -268,16 +248,30 @@ class Indexer:
             # 4. Ensure collection exists
             self._ensure_collection(collection_name)
             
-            # 5. Prepare points for Qdrant
+            # 5. Prepare points for Qdrant (with page mapping)
             logger.info(f"📊 Preparing points for upload...")
             points = []
             
+            # Extract page boundaries (remove from metadata before storing in Qdrant)
+            page_boundaries = pdf_metadata.pop("page_boundaries", [])
+            
+            search_pos = 0
+            chunks_with_pages = 0
+            
             for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-                # Merge PDF metadata with provided metadata
+                # Map chunk to page number(s) by character position
+                page_numbers, search_pos = self._get_chunk_pages(
+                    chunk, text, page_boundaries, search_pos
+                )
+                
+                if page_numbers:
+                    chunks_with_pages += 1
+                
                 point_metadata = {
                     **metadata,  # user_id, title, language, is_public, document_id
                     "chunk_index": i,
                     "chunk_text": chunk,
+                    "page_numbers": page_numbers,
                     "pages_count": pdf_metadata["pages_count"],
                     "file_size_bytes": pdf_metadata["file_size_bytes"]
                 }
@@ -290,13 +284,15 @@ class Indexer:
                 
                 points.append(point)
             
+            logger.info(f"📄 Page mapping: {chunks_with_pages}/{len(chunks)} chunks have page numbers")
+            
             # 6. Upload to Qdrant
             logger.info(f"⬆️  Uploading {len(points)} points to Qdrant...")
             
             self.client.upsert(
                 collection_name=collection_name,
                 points=points,
-                wait=True  # Wait for indexing to complete
+                wait=True
             )
             
             logger.info(f"✅ Upload complete!")
@@ -326,7 +322,6 @@ class Indexer:
         try:
             logger.info(f"🗑️  Deleting document {document_id} from {collection_name}")
             
-            # Delete points with matching document_id
             self.client.delete(
                 collection_name=collection_name,
                 points_selector=Filter(

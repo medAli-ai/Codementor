@@ -262,7 +262,8 @@ class RAGService:
                     {
                         "title": r["title"],
                         "document_id": r["document_id"],
-                        "score": r["score"]
+                        "score": r["score"],
+                        "page_numbers": r.get("page_numbers", [])
                     }
                     for r in results
                 ]
@@ -302,8 +303,13 @@ class RAGService:
             context_parts.append(f"From '{doc_title}':")
             for chunk in chunks:
                 chunk_text = chunk["chunk_text"].strip()
-                context_parts.append(f"  {chunk_text}")
-            context_parts.append("")  # Blank line between documents
+                page_nums = chunk.get("page_numbers", [])
+                if page_nums:
+                    page_label = ", ".join(str(p) for p in page_nums)
+                    context_parts.append(f"  [Page {page_label}] {chunk_text}")
+                else:
+                    context_parts.append(f"  {chunk_text}")
+            context_parts.append("")
         
         return "\n".join(context_parts)
     

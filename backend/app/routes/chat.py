@@ -47,7 +47,8 @@ async def chat(
                 RAGSource(
                     title=src['title'],
                     document_id=src['document_id'],
-                    score=src['score']
+                    score=src['score'],
+                    page_numbers=src.get('page_numbers', [])
                 )
                 for src in rag_result['sources']
             ]
@@ -114,7 +115,8 @@ async def chat_stream(
                             {
                                 "title": src['title'],
                                 "document_id": src['document_id'],
-                                "score": src['score']
+                                "score": src['score'],
+                                "page_numbers": src.get('page_numbers', [])
                             }
                             for src in rag_result['sources']
                         ]

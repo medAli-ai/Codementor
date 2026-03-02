@@ -75,6 +75,7 @@ class RAGSource(BaseModel):
     title: str
     document_id: int
     score: float
+    page_numbers: list[int] = []
 
 class ChatResponse(BaseModel):
     """Response from chat endpoint"""
