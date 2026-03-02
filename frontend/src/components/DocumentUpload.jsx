@@ -51,15 +51,7 @@ function DocumentUpload({ onSuccess, onCancel }) {
 
   const handleDragOver  = useCallback((e) => { e.preventDefault(); }, []);
 
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    dragCounter.current = 0;
-    setUploadState(STATE.IDLE);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) validateAndSet(dropped);
-  }, []);
-
-  // ── File validation ───────────────────────────────────────────────────────
+   // ── File validation ───────────────────────────────────────────────────────
   const validateAndSet = (f) => {
     if (f.type !== 'application/pdf') {
       setErrorMessage('Only PDF files are supported.');
@@ -75,6 +67,16 @@ function DocumentUpload({ onSuccess, onCancel }) {
     setErrorMessage('');
     setUploadState(STATE.IDLE);
   };
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setUploadState(STATE.IDLE);
+    const dropped = e.dataTransfer.files[0];
+    if (dropped) validateAndSet(dropped);
+  }, []);
+
+ 
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
