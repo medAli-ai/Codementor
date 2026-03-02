@@ -37,6 +37,9 @@ migration:
 lint:
 	cd backend && uv run ruff check .
 
+lint-frontend:
+	cd frontend && npm run lint
+
 # Run tests
 test:
 	cd backend && uv run pytest
