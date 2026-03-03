@@ -263,7 +263,8 @@ class RAGService:
                         "title": r["title"],
                         "document_id": r["document_id"],
                         "score": r["score"],
-                        "page_numbers": r.get("page_numbers", [])
+                        "page_numbers": r.get("page_numbers", []),
+                        "chunk_type": r.get("chunk_type", "prose"),
                     }
                     for r in results
                 ]
@@ -303,12 +304,16 @@ class RAGService:
             context_parts.append(f"From '{doc_title}':")
             for chunk in chunks:
                 chunk_text = chunk["chunk_text"].strip()
+                chunk_type = chunk.get("chunk_type", "prose")
                 page_nums = chunk.get("page_numbers", [])
-                if page_nums:
-                    page_label = ", ".join(str(p) for p in page_nums)
-                    context_parts.append(f"  [Page {page_label}] {chunk_text}")
+                page_label = f"[Page {', '.join(str(p) for p in page_nums)}] " if page_nums else ""
+                
+                if chunk_type == "code":
+                    context_parts.append(f"  {page_label}```\n{chunk_text}\n```")
+                elif chunk_type == "table":
+                    context_parts.append(f"  {page_label}[Table]\n{chunk_text}")
                 else:
-                    context_parts.append(f"  {chunk_text}")
+                    context_parts.append(f"  {page_label}{chunk_text}")
             context_parts.append("")
         
         return "\n".join(context_parts)

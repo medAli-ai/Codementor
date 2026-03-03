@@ -210,6 +210,7 @@ class Retriever:
                 "language": result.payload.get("language", "java"),
                 "chunk_index": result.payload.get("chunk_index", 0),
                 "page_numbers": result.payload.get("page_numbers", []),
+                "chunk_type": result.payload.get("chunk_type", "prose"),
                 "is_public": result.payload.get("is_public", False),
                 "metadata": {
                     "pages_count": result.payload.get("pages_count"),
