@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     RAG_SCORE_THRESHOLD: float = 0.7
     RAG_CHUNK_SIZE: int = 512
     RAG_CHUNK_OVERLAP: int = 50
+    RAG_CHUNK_THRESHOLD: float = 0.7
     
     # ============ RAG - Directories ============
     RAG_DATA_DIR: str = "rag_data"

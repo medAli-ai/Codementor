@@ -29,7 +29,7 @@ class Chunker:
         embedding_model: str = None,
         threshold: float = None,
         chunk_size: int = None,
-        skip_window: int = 0
+        skip_window: int = 1
     ):
         """
         Initialize SemanticChunker.
@@ -38,10 +38,10 @@ class Chunker:
             embedding_model: HuggingFace model for embeddings (defaults to config)
             threshold: Similarity threshold 0-1, lower = larger groups (defaults to config)
             chunk_size: Maximum tokens per chunk (defaults to config)
-            skip_window: Number of groups to skip when merging (0 = no skip-merge)
+            skip_window: Number of groups to skip when merging (1 = look past code blocks)
         """
         self.embedding_model = embedding_model or settings.EMBEDDING_MODEL
-        self.threshold = threshold or settings.RAG_SCORE_THRESHOLD
+        self.threshold = threshold or settings.RAG_CHUNK_THRESHOLD  # FIXED: was RAG_SCORE_THRESHOLD
         self.chunk_size = chunk_size or settings.RAG_CHUNK_SIZE
         self.skip_window = skip_window
         
