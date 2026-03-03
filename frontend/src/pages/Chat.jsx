@@ -19,7 +19,7 @@ function Chat() {
   const [useRag, setUseRag] = useState(true);
 
   const messagesEndRef = useRef(null);
-  const skipConvLoadRef = useRef(false);
+  const justStreamedRef = useRef(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { conversationId: urlConversationId } = useParams();
@@ -32,27 +32,28 @@ function Chat() {
   }, [user]);
 
   // 2. When URL conversation ID changes, load that conversation
-  //    Guard: skip if it's already the active conversation
   useEffect(() => {
-  if (!urlConversationId) {
-    setCurrentConversation(null);
-    setMessages([]);
-    return;
-  }
-  if (conversations.length === 0) return;
-  const conv = conversations.find(c => c.id === parseInt(urlConversationId));
-  if (!conv) return;
-  if (currentConversation?.id === conv.id) return;
-  if (skipConvLoadRef.current) {          // ← ADD THIS
-  skipConvLoadRef.current = false;       // ← ADD THIS
-  return;                                // ← ADD THIS
-}
-  setCurrentConversation(conv);
-  conversationsAPI.get(conv.id)
-    .then(res => setMessages(res.data.messages))
-    .catch(err => console.error('Failed to load conversation:', err));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [urlConversationId, conversations]);
+    if (!urlConversationId) {
+      setCurrentConversation(null);
+      setMessages([]);
+      return;
+    }
+    if (conversations.length === 0) return;
+    const conv = conversations.find(c => c.id === parseInt(urlConversationId));
+    if (!conv) return;
+
+    // Don't re-fetch messages if we just finished streaming (sources would be lost)
+    if (justStreamedRef.current) {
+      setCurrentConversation(conv);
+      return;
+    }
+
+    setCurrentConversation(conv);
+    conversationsAPI.get(conv.id)
+      .then(res => setMessages(res.data.messages))
+      .catch(err => console.error('Failed to load conversation:', err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlConversationId, conversations]);
 
   // 3. Auto-scroll to latest message
   useEffect(() => {
@@ -144,7 +145,6 @@ function Chat() {
       role: 'assistant',
       content: '',
       isStreaming: true,
-      // NEW: placeholders — will be populated in onDone
       sources: [],
       rag_used: false,
     };
@@ -159,7 +159,7 @@ function Chat() {
         currentConversation?.id || null,
         0.7,
 
-        // onChunk — unchanged
+        // onChunk
         (chunk) => {
           accumulatedContent += chunk;
           setMessages(prev => prev.map(msg =>
@@ -169,24 +169,27 @@ function Chat() {
           ));
         },
 
-        // onDone — NEW: receives sources + ragUsed as extra args
+        // onDone
         async (conversationId, messageId, sources, ragUsed) => {
           setMessages(prev => prev.map(msg =>
             msg.id === tempAssistantId
               ? {
                   ...msg,
                   isStreaming: false,
-                  sources: sources,    // attach for SourceCitations in MessageBubble
-                  rag_used: ragUsed,   // attach for conditional rendering
+                  sources: sources,
+                  rag_used: ragUsed,
                 }
               : msg
           ));
 
-          // If new conversation was created, update sidebar — unchanged
+          // If new conversation was created, update sidebar
           if (!currentConversation) {
+            // Block the URL effect from re-fetching messages for the next 3 seconds
+            justStreamedRef.current = true;
+            setTimeout(() => { justStreamedRef.current = false; }, 3000);
+
             const newConv = await conversationsAPI.get(conversationId);
             setCurrentConversation(newConv.data);
-            skipConvLoadRef.current = true;
             navigate(`/chat/${conversationId}`);
             loadConversations();
           }
@@ -217,7 +220,7 @@ function Chat() {
   return (
     <div className="flex h-screen bg-gray-100">
 
-      {/* ===== SIDEBAR — structure unchanged, Library link added ===== */}
+      {/* ===== SIDEBAR ===== */}
       <div className="w-64 bg-gray-900 text-white flex flex-col">
 
         {/* Logo */}
@@ -235,7 +238,7 @@ function Chat() {
             + New Chat
           </button>
 
-          {/* NEW: Library navigation */}
+          {/* Library navigation */}
           <button
             onClick={() => navigate('/library')}
             className="w-full bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg py-2 px-4 text-sm font-medium transition-colors text-left"
@@ -244,7 +247,7 @@ function Chat() {
           </button>
         </div>
 
-        {/* Conversations List — unchanged */}
+        {/* Conversations List */}
         <div className="flex-1 overflow-y-auto px-3 space-y-1">
           {sidebarLoading ? (
             <p className="text-gray-400 text-sm text-center py-4">Loading...</p>
@@ -308,7 +311,7 @@ function Chat() {
           )}
         </div>
 
-        {/* User Info + Logout — unchanged */}
+        {/* User Info + Logout */}
         <div className="p-4 border-t border-gray-700">
           <p className="text-gray-400 text-sm truncate mb-2">
             👤 {user?.username}
@@ -326,7 +329,7 @@ function Chat() {
       {/* ===== MAIN CHAT AREA ===== */}
       <div className="flex-1 flex flex-col">
 
-        {/* Chat Header — unchanged */}
+        {/* Chat Header */}
         <div className="bg-white border-b px-6 py-4 shadow-sm">
           <h2 className="font-semibold text-gray-800">
             {currentConversation ? currentConversation.title : 'New Conversation'}
@@ -339,10 +342,10 @@ function Chat() {
           </p>
         </div>
 
-        {/* Messages Area — unchanged structure, MessageBubble handles sources */}
+        {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
 
-          {/* Welcome Screen — unchanged */}
+          {/* Welcome Screen */}
           {!currentConversation && messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="text-6xl mb-4">🎓</div>
@@ -372,7 +375,7 @@ function Chat() {
             </div>
           )}
 
-          {/* Messages — MessageBubble now renders citations internally */}
+          {/* Messages */}
           {messages.map(message => (
             <MessageBubble key={`msg-${message.id}`} message={message} />
           ))}
@@ -383,7 +386,7 @@ function Chat() {
         {/* Message Input */}
         <div className="bg-white border-t p-4">
 
-          {/* NEW: RAG toggle — small, unobtrusive, above the textarea */}
+          {/* RAG toggle */}
           <div className="flex justify-end max-w-4xl mx-auto mb-2">
             <button
               onClick={() => setUseRag(v => !v)}
