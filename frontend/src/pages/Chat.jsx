@@ -50,7 +50,13 @@ function Chat() {
 
     setCurrentConversation(conv);
     conversationsAPI.get(conv.id)
-      .then(res => setMessages(res.data.messages))
+      .then(res => setMessages(
+    res.data.messages.map(m => ({
+      ...m,
+      sources:  m.sources  ?? [],
+      rag_used: m.rag_used ?? false,
+    }))
+  ))
       .catch(err => console.error('Failed to load conversation:', err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlConversationId, conversations]);
