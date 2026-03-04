@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { use } from 'react';
 
 const API_URL = 'http://localhost:8000';
 
@@ -147,7 +148,7 @@ async function refreshAccessToken() {
 }
 
 // ─── Helper: perform one fetch attempt to the stream endpoint ───────────────
-async function fetchStream(token, message, conversationId, temperature) {
+async function fetchStream(token, message, conversationId, temperature, useRag) {
   return fetch('http://localhost:8000/api/chat/stream', {
     method: 'POST',
     headers: {
@@ -158,6 +159,7 @@ async function fetchStream(token, message, conversationId, temperature) {
       message,
       conversation_id: conversationId,
       temperature,
+      use_rag: useRag,
     }),
   });
 }
@@ -171,18 +173,19 @@ export const streamMessage = async (
   message,
   conversationId,
   temperature = 0.7,
+  useRag = true,
   onChunk,
   onDone
 ) => {
   let token = localStorage.getItem('token');
-  let response = await fetchStream(token, message, conversationId, temperature);
+  let response = await fetchStream(token, message, conversationId, temperature, useRag);
 
   // ── Auto-refresh on 401 ──────────────────────────────────────────────────
   if (response.status === 401) {
     try {
       token = await refreshAccessToken();          // get fresh token
       response = await fetchStream(               // retry once
-        token, message, conversationId, temperature
+        token, message, conversationId, temperature, useRag
       );
     } catch {
       // Refresh failed (expired / invalid) → force re-login
