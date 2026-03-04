@@ -150,7 +150,8 @@ def process_chat_message(
     conversation_id: Optional[int],
     user_id: int,
     temperature: float,
-    db: Session
+    use_rag: bool,
+    db: Session = None
 ) -> tuple[int, int, str, Optional[Dict]]:
     """
     Process a chat message with RAG integration.
@@ -162,6 +163,7 @@ def process_chat_message(
         conversation_id: Optional existing conversation ID
         user_id: User making the request
         temperature: LLM temperature parameter
+        use_rag: Whether to use RAG context from uploaded documents
         db: Database session
     
     Returns:
@@ -185,27 +187,30 @@ def process_chat_message(
     rag_result = None
     enhanced_message = user_message
     
-    try:
-        logger.info(f"🔍 Checking for RAG context...")
-        rag_context = rag_service.get_context(
-            query=user_message,
-            user_id=user_id
-        )
-        
-        if rag_context:
-            # RAG context found!
-            logger.info(f"✅ RAG context retrieved: {rag_context['chunks_count']} chunks from {len(rag_context['sources'])} documents")
-            
-            # Enhance message with context
-            enhanced_message = build_rag_enhanced_message(
-                            context=rag_context['context'],
-                            question=user_message
-                            )
-        else:
-            logger.info(f"ℹ️  No RAG context (not programming-related or no matching docs)")
-    
-    except Exception as e:
-        logger.warning(f"⚠️  RAG context retrieval failed: {e}")
+    if use_rag:
+        try:
+            logger.info(f"🔍 Checking for RAG context...")
+            rag_context = rag_service.get_context(
+                query=user_message,
+                user_id=user_id
+            )
+            if rag_context:
+                logger.info(f"✅ RAG context retrieved: {rag_context['chunks_count']} chunks from {len(rag_context['sources'])} documents")
+                enhanced_message = build_rag_enhanced_message(
+                    context=rag_context['context'],
+                    question=user_message
+                )
+                rag_result = {
+                    "sources": rag_context['sources'],
+                    "chunks_count": rag_context['chunks_count'],
+                    "detected_topic": rag_context['detected_topic']
+                }
+            else:
+                logger.info(f"ℹ️  No RAG context (not programming-related or no matching docs)")
+        except Exception as e:
+            logger.warning(f"⚠️  RAG context retrieval failed: {e}")
+    else:
+        logger.info(f"⏭️  RAG skipped (toggle off)")
         # Continue without RAG if it fails - graceful degradation
     
     # 4. Get LLM response (with enhanced message if RAG was used)
@@ -228,7 +233,8 @@ async def process_chat_message_stream(
     conversation_id: Optional[int],
     user_id: int,
     temperature: float,
-    db: Session
+    use_rag: bool = True,   
+    db: Session = None
 ):
     """
     Process a streaming chat message with RAG integration.
@@ -263,36 +269,32 @@ async def process_chat_message_stream(
     rag_result = None
     enhanced_message = user_message
     
-    try:
-        logger.info(f"🔍 Checking for RAG context...")
-        rag_context = rag_service.get_context(
-            query=user_message,
-            user_id=user_id
-        )
-        
-        if rag_context:
-            # RAG context found!
-            logger.info(f"✅ RAG context retrieved: {rag_context['chunks_count']} chunks")
-            
-            # Enhance message with context
-            enhanced_message = f"""Based on your uploaded documents:
+    if use_rag:
+        try:
+            logger.info(f"🔍 Checking for RAG context...")
+            rag_context = rag_service.get_context(
+                query=user_message,
+                user_id=user_id
+            )
+            if rag_context:
+                logger.info(f"✅ RAG context retrieved: {rag_context['chunks_count']} chunks")
+                enhanced_message = f"""Based on your uploaded documents:
 
 {rag_context['context']}
 
 Question: {user_message}
 """
-            
-            # Store RAG metadata
-            rag_result = {
-                "sources": rag_context['sources'],
-                "chunks_count": rag_context['chunks_count'],
-                "detected_topic": rag_context['detected_topic']
-            }
-        else:
-            logger.info(f"ℹ️  No RAG context")
-    
-    except Exception as e:
-        logger.warning(f"⚠️  RAG context retrieval failed: {e}")
+                rag_result = {
+                    "sources": rag_context['sources'],
+                    "chunks_count": rag_context['chunks_count'],
+                    "detected_topic": rag_context['detected_topic']
+                }
+            else:
+                logger.info(f"ℹ️  No RAG context")
+        except Exception as e:
+            logger.warning(f"⚠️  RAG context retrieval failed: {e}")
+    else:
+        logger.info(f"⏭️  RAG skipped (toggle off)")
         # Continue without RAG if it fails
     
     # 4. Stream LLM response and accumulate
