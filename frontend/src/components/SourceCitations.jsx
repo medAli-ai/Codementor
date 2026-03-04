@@ -16,6 +16,13 @@ const scoreStyle = (score) => {
   return               { color: '#dc2626', label: 'Low' };          // red-600
 };
 
+// Chunk type badge — prose returns null (no badge, it's the default)
+const chunkBadge = (chunkType) => {
+  if (chunkType === 'code')  return { icon: '</>', color: '#2563eb' }; // blue-600
+  if (chunkType === 'table') return { icon: '⊞',   color: '#7c3aed' }; // violet-600
+  return null;
+};
+
 function SourceCitations({ sources = [], ragUsed = false }) {
   const [expanded, setExpanded] = useState(false);
   const navigate = useNavigate();
@@ -47,36 +54,50 @@ function SourceCitations({ sources = [], ragUsed = false }) {
         <div className="mt-2 space-y-1">
           {sources.map((source, index) => {
             const style = scoreStyle(source.score);
+            const badge = chunkBadge(source.chunk_type);
             return (
               <div
                 key={source.document_id ?? index}
                 className="flex items-center justify-between rounded-lg bg-gray-50 border border-gray-200 px-3 py-2"
               >
-                {/* Document name */}
+                {/* Left: document name + page numbers */}
                 <div className="flex items-center gap-1.5 truncate">
-  <button
-    onClick={() => navigate(`/library?highlight=${source.document_id}`)}
-    className="text-xs text-gray-700 hover:text-blue-600 truncate text-left font-medium"
-  >
-    📄 {source.title}
-  </button>
-  {source.page_numbers?.length > 0 && (
-    <span className="text-xs text-gray-400 flex-shrink-0">
-      p.{source.page_numbers.join(', ')}
-    </span>
-  )}
-</div>
+                  <button
+                    onClick={() => navigate(`/library?highlight=${source.document_id}`)}
+                    className="text-xs text-gray-700 hover:text-blue-600 truncate text-left font-medium"
+                  >
+                    📄 {source.title}
+                  </button>
+                  {source.page_numbers?.length > 0 && (
+                    <span className="text-xs text-gray-400 flex-shrink-0">
+                      p.{source.page_numbers.join(', ')}
+                    </span>
+                  )}
+                </div>
 
-                {/* Relevance badge */}
-                <span
-                  className="text-xs font-semibold ml-3 flex-shrink-0 px-2 py-0.5 rounded-full"
-                  style={{
-                    color: style.color,
-                    background: style.color + '18', // ~10% opacity tint
-                  }}
-                >
-                  {style.label} ({Math.round(source.score * 100)}%)
-                </span>
+                {/* Right: chunk type badge (optional) + relevance badge */}
+                <div className="flex items-center gap-1.5 ml-3 flex-shrink-0">
+                  {badge && (
+                    <span
+                      className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full"
+                      style={{
+                        color: badge.color,
+                        background: badge.color + '18', // ~10% opacity tint
+                      }}
+                    >
+                      {badge.icon}
+                    </span>
+                  )}
+                  <span
+                    className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                    style={{
+                      color: style.color,
+                      background: style.color + '18',
+                    }}
+                  >
+                    {style.label} ({Math.round(source.score * 100)}%)
+                  </span>
+                </div>
               </div>
             );
           })}
