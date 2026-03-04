@@ -158,6 +158,7 @@ function Chat() {
         userMessage,
         currentConversation?.id || null,
         0.7,
+        useRag,
 
         // onChunk
         (chunk) => {
