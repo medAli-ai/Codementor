@@ -60,13 +60,15 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[int] = Field(None, description="Existing conversation ID, or None for new")
     message: str = Field(..., min_length=1, max_length=10000)
     temperature: float = Field(default=0.7, ge=0.0, le=1.0)
+    use_rag: bool = Field(default=True, description="Whether to use RAG context from uploaded documents")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "conversation_id": 1,
                 "message": "Explain inheritance in Python",
-                "temperature": 0.7
+                "temperature": 0.7,
+                "use_rag": True
             }
         }
 
