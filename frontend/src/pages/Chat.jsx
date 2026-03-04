@@ -177,7 +177,7 @@ function Chat() {
         },
 
         // onDone
-        async (conversationId, messageId, sources, ragUsed) => {
+        async (conversationId, messageId, sources, ragUsed, conversationTitle) => {
           setMessages(prev => prev.map(msg =>
             msg.id === tempAssistantId
               ? {
@@ -196,7 +196,10 @@ function Chat() {
             setTimeout(() => { justStreamedRef.current = false; }, 3000);
 
             const newConv = await conversationsAPI.get(conversationId);
-            setCurrentConversation(newConv.data);
+            const convWithTitle = conversationTitle
+    ? { ...newConv.data, title: conversationTitle }
+    : newConv.data;
+            setCurrentConversation(convWithTitle);
             navigate(`/chat/${conversationId}`);
             loadConversations();
           }
