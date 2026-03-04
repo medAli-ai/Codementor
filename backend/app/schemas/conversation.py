@@ -18,6 +18,8 @@ class MessageResponse(MessageBase):
     id: int
     conversation_id: int
     created_at: datetime
+    sources:  Optional[List[Dict]] = None  
+    rag_used: bool = False 
     
     class Config:
         from_attributes = True
