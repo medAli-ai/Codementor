@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -29,3 +29,5 @@ class Message(Base):
     
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
+    sources  = Column(JSON, nullable=True)   # list of source dicts, only on assistant messages
+    rag_used = Column(Boolean, default=False, nullable=False)
