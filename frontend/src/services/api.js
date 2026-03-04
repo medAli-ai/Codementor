@@ -223,6 +223,7 @@ export const streamMessage = async (
             parsed.message_id,
             parsed.sources  ?? [],
             parsed.rag_used ?? false,
+            parsed.conversation_title ?? null,
           );
           if (parsed.error) throw new Error(parsed.error);
         } catch  {
