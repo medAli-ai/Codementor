@@ -13,6 +13,40 @@ logger = logging.getLogger(__name__)
 # Initialize RAG service
 rag_service = get_rag_service()
 
+TITLE_PROMPT_TEMPLATE = """Generate a short title (4-6 words) for a conversation that starts with this message:
+"{user_message}"
+Reply with the title only. No quotes, no punctuation at the end."""
+
+
+def generate_conversation_title(user_message: str) -> str:
+    """
+    Generate a short title for a new conversation using the LLM.
+    
+    Called only on the first message of a conversation.
+    Falls back to 'New Chat' if generation fails.
+    
+    Args:
+        user_message: The first user message in the conversation
+    
+    Returns:
+        A short title string (4-6 words)
+    """
+    try:
+        prompt = TITLE_PROMPT_TEMPLATE.format(user_message=user_message[:200])
+        title = llm_service.chat(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
+        )
+        # Sanitize — strip quotes, newlines, leading/trailing whitespace
+        title = title.strip().strip('"\'').strip()
+        # Truncate to 100 chars just in case the model ignores instructions
+        title = title[:100]
+        logger.info(f"✅ Generated title: '{title}'")
+        return title
+    except Exception as e:
+        logger.warning(f"⚠️  Title generation failed: {e}")
+        return "New Chat"
+
 
 # At the top of chat_service.py, after imports
 RAG_PROMPT_TEMPLATE = """Based on the following reference materials from your uploaded documents:
@@ -310,10 +344,21 @@ Question: {user_message}
         rag_used=bool(rag_result)
     )
     
-    # 6. Yield final metadata (conversation_id, message_id, and RAG sources)
+    # 🆕 6. Auto-generate title on first message
+    conversation_title = None
+    if len(history) == 0:
+        logger.info(f"📝 First message — generating conversation title...")
+        conversation_title = generate_conversation_title(user_message)
+        conversation.title = conversation_title
+        conversation.updated_at = datetime.utcnow()  # 🆕 fix ordering
+        db.commit()
+        logger.info(f"✅ Conversation {conversation.id} title set to: '{conversation_title}'")
+
+    # 7. Yield final metadata
     yield {
         "type": "done",
         "conversation_id": conversation.id,
         "message_id": assistant_msg.id,
-        "rag_result": rag_result  # 🆕 NEW: Include RAG metadata
+        "rag_result": rag_result,
+        "conversation_title": conversation_title  # 🆕 None if not first message
     }
