@@ -74,31 +74,22 @@ def save_message(
     conversation_id: int,
     role: str,
     content: str,
-    db: Session
+    db: Session,
+    sources: Optional[list] = None,  
+    rag_used: bool = False             
 ) -> Message:
-    """
-    Save a message to the database.
-    
-    Args:
-        conversation_id: Conversation this message belongs to
-        role: 'user' or 'assistant'
-        content: Message content
-        db: Database session
-    
-    Returns:
-        Created Message object
-    """
     message = Message(
         conversation_id=conversation_id,
         role=role,
-        content=content
+        content=content,
+        sources=sources,      
+        rag_used=rag_used     
     )
     
     db.add(message)
     db.commit()
     db.refresh(message)
     
-    # Update conversation's updated_at timestamp
     conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if conversation:
         conversation.updated_at = datetime.utcnow()
@@ -180,10 +171,12 @@ def process_chat_message(
         conversation_id=conversation.id,
         role="user",
         content=user_message,
-        db=db
+        db=db,
+        sources=rag_result["sources"] if rag_result else None, 
+        rag_used=bool(rag_result)                               
     )
     
-    # 🆕 3. Get RAG context (if applicable)
+    # 3. Get RAG context (if applicable)
     rag_result = None
     enhanced_message = user_message
     
@@ -222,7 +215,9 @@ def process_chat_message(
         conversation_id=conversation.id,
         role="assistant",
         content=assistant_response,
-        db=db
+        db=db,
+        sources=rag_result["sources"] if rag_result else None,
+        rag_used=bool(rag_result)
     )
     
     return conversation.id, assistant_msg.id, assistant_response, rag_result
@@ -310,7 +305,9 @@ Question: {user_message}
         conversation_id=conversation.id,
         role="assistant",
         content=accumulated_response,
-        db=db
+        db=db,
+        sources=rag_result["sources"] if rag_result else None,
+        rag_used=bool(rag_result)
     )
     
     # 6. Yield final metadata (conversation_id, message_id, and RAG sources)
