@@ -35,6 +35,7 @@ async def chat(
             conversation_id=request.conversation_id,
             user_id=current_user.id,
             temperature=request.temperature,
+            use_rag=request.use_rag,
             db=db
         )
         
@@ -92,6 +93,7 @@ async def chat_stream(
                 conversation_id=request.conversation_id,
                 user_id=current_user.id,
                 temperature=request.temperature,
+                use_rag=request.use_rag,
                 db=db
             )
             
