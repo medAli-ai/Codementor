@@ -108,6 +108,7 @@ async def chat_stream(
                     conversation_id = item["conversation_id"]
                     message_id = item["message_id"]
                     rag_result = item.get("rag_result")  # 🆕 NEW: Get RAG metadata
+                    conversation_title = item.get("conversation_title")
                     
                     # Format RAG sources if available
                     sources = None
@@ -132,7 +133,8 @@ async def chat_stream(
                         'conversation_id': conversation_id,
                         'message_id': message_id,
                         'sources': sources,  # 🆕 NEW: RAG sources
-                        'rag_used': rag_used  # 🆕 NEW: Whether RAG was used
+                        'rag_used': rag_used,  # 🆕 NEW: Whether RAG was used
+                        'conversation_title': conversation_title
                     })}\n\n"
                     
                     logger.info(f"✅ Streaming complete (conversation: {conversation_id}, RAG used: {rag_used})")
