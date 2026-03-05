@@ -6,6 +6,33 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import SourceCitations from './SourceCitations';
 
+// ─── Language auto-detection ──────────────────────────────────────────────────
+// Fallback when the LLM doesn't specify a language fence.
+function detectLanguage(code) {
+  const s = code.trim();
+
+  if (/public\s+class\s|System\.out\.|void\s+main\s*\(|import\s+java\./.test(s)) return 'java';
+  if (/def\s+\w+\s*\(|import\s+\w+|print\s*\(|:\s*$/.test(s))                   return 'python';
+  if (/const\s|let\s|var\s|=>\s*{|console\.log|require\(/.test(s))              return 'javascript';
+  if (/interface\s+\w+|:\s*string|:\s*number|:\s*boolean/.test(s))              return 'typescript';
+  if (/#include\s*<|int\s+main\s*\(|std::/.test(s))                             return 'cpp';
+  if (/SELECT\s|INSERT\s|UPDATE\s|FROM\s|WHERE\s/i.test(s))                     return 'sql';
+  if (/^\s*<\w+|<\/\w+>/.test(s))                                               return 'html';
+  if (/^\s*[\.\#]\w+\s*\{|:\s*\w+\s*;/.test(s))                                return 'css';
+  if (/^(FROM|RUN|CMD|EXPOSE|ENV|COPY)\s/m.test(s))                             return 'docker';
+
+  return 'text';
+}
+
+// ─── Single-line safety net ───────────────────────────────────────────────────
+// If the model wraps a one-liner in triple backticks despite the system prompt,
+// render it as an inline chip instead of a full dark block.
+function isSingleLineSnippet(code) {
+  const lines = code.trim().split('\n');
+  return lines.length === 1 && code.trim().length <= 80;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 function MessageBubble({ message }) {
   const isUser = message.role === 'user';
 
@@ -37,18 +64,55 @@ function MessageBubble({ message }) {
             components={{
               code({ inline, className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className || '');
-                const language = match ? match[1] : 'text';
+                const codeString = String(children).replace(/\n$/, '');
+
+                // Inline code — always render as chip
+                if (inline) {
+                  return (
+                    <code style={{
+                      background: '#f3f4f6',
+                      color: '#db2777',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      fontFamily: 'monospace',
+                    }}>
+                      {children}
+                    </code>
+                  );
+                }
+
+                // Single-line safety net — model used triple backticks for a one-liner
+                if (isSingleLineSnippet(codeString)) {
+                  return (
+                    <code style={{
+                      display: 'inline-block',
+                      background: '#f3f4f6',
+                      color: '#db2777',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      fontFamily: 'monospace',
+                      margin: '2px 0',
+                    }}>
+                      {codeString}
+                    </code>
+                  );
+                }
+
+                // Multi-line block — full treatment with header + syntax highlighting
+                const language = match ? match[1] : detectLanguage(codeString);
                 const [copied, setCopied] = useState(false);
 
                 const handleCopy = () => {
-                  navigator.clipboard.writeText(String(children).replace(/\n$/, ''));
+                  navigator.clipboard.writeText(codeString);
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 };
 
-                return !inline ? (
+                return (
                   <div style={{ position: 'relative', marginBottom: '12px' }}>
-                    {/* Header bar: language label + copy button */}
+                    {/* Header bar */}
                     <div style={{
                       display: 'flex',
                       justifyContent: 'space-between',
@@ -57,14 +121,22 @@ function MessageBubble({ message }) {
                       borderRadius: '6px 6px 0 0',
                       padding: '6px 12px',
                     }}>
+                      {/* Pill badge */}
                       <span style={{
-                        fontSize: '0.7rem',
+                        fontSize: '0.65rem',
                         color: '#abb2bf',
                         fontFamily: 'monospace',
+                        background: '#3e4451',
+                        border: '1px solid #4b5263',
+                        borderRadius: '999px',
+                        padding: '2px 8px',
                         textTransform: 'lowercase',
+                        letterSpacing: '0.03em',
                       }}>
                         {language}
                       </span>
+
+                      {/* Copy button */}
                       <button
                         onClick={handleCopy}
                         style={{
@@ -89,22 +161,9 @@ function MessageBubble({ message }) {
                       customStyle={{ borderRadius: '0 0 6px 6px', marginTop: 0 }}
                       {...props}
                     >
-                      {String(children).replace(/\n$/, '')}
+                      {codeString}
                     </SyntaxHighlighter>
                   </div>
-                ) : (
-                  <code
-                    style={{
-                      background: '#f3f4f6',
-                      color: '#db2777',
-                      padding: '2px 4px',
-                      borderRadius: '4px',
-                      fontSize: '0.75rem',
-                      fontFamily: 'monospace',
-                    }}
-                  >
-                    {children}
-                  </code>
                 );
               },
               h1: ({ children }) => (
@@ -147,7 +206,7 @@ function MessageBubble({ message }) {
                   paddingLeft: '12px',
                   color: '#6b7280',
                   margin: '8px 0',
-                  fontStyle: 'italic'
+                  fontStyle: 'italic',
                 }}>
                   {children}
                 </blockquote>
