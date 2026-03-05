@@ -1,9 +1,9 @@
+import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-// NEW import
 import SourceCitations from './SourceCitations';
 
 function MessageBubble({ message }) {
@@ -19,7 +19,7 @@ function MessageBubble({ message }) {
         }
         ${message.isLoading ? 'animate-pulse' : ''}
       `}>
-        {/* Role Label — unchanged */}
+        {/* Role Label */}
         <p className={`text-xs font-semibold mb-2 ${isUser ? 'text-blue-200' : 'text-gray-400'}`}>
           {isUser ? '👤 You' : '🤖 CodeMentor'}
           {message.isStreaming && (
@@ -27,7 +27,7 @@ function MessageBubble({ message }) {
           )}
         </p>
 
-        {/* Content — unchanged */}
+        {/* Content */}
         {isUser ? (
           <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
         ) : (
@@ -38,16 +38,60 @@ function MessageBubble({ message }) {
               code({ inline, className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className || '');
                 const language = match ? match[1] : 'text';
+                const [copied, setCopied] = useState(false);
+
+                const handleCopy = () => {
+                  navigator.clipboard.writeText(String(children).replace(/\n$/, ''));
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                };
 
                 return !inline ? (
-                  <SyntaxHighlighter
-                    style={oneDark}
-                    language={language}
-                    PreTag="div"
-                    {...props}
-                  >
-                    {String(children).replace(/\n$/, '')}
-                  </SyntaxHighlighter>
+                  <div style={{ position: 'relative', marginBottom: '12px' }}>
+                    {/* Header bar: language label + copy button */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      background: '#282c34',
+                      borderRadius: '6px 6px 0 0',
+                      padding: '6px 12px',
+                    }}>
+                      <span style={{
+                        fontSize: '0.7rem',
+                        color: '#abb2bf',
+                        fontFamily: 'monospace',
+                        textTransform: 'lowercase',
+                      }}>
+                        {language}
+                      </span>
+                      <button
+                        onClick={handleCopy}
+                        style={{
+                          fontSize: '0.7rem',
+                          color: copied ? '#98c379' : '#abb2bf',
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontFamily: 'monospace',
+                          transition: 'color 0.2s',
+                        }}
+                      >
+                        {copied ? '✓ Copied' : 'Copy'}
+                      </button>
+                    </div>
+
+                    {/* Code block */}
+                    <SyntaxHighlighter
+                      style={oneDark}
+                      language={language}
+                      PreTag="div"
+                      customStyle={{ borderRadius: '0 0 6px 6px', marginTop: 0 }}
+                      {...props}
+                    >
+                      {String(children).replace(/\n$/, '')}
+                    </SyntaxHighlighter>
+                  </div>
                 ) : (
                   <code
                     style={{
@@ -95,32 +139,4 @@ function MessageBubble({ message }) {
                 <li style={{ marginBottom: '2px', fontSize: '0.875rem' }}>{children}</li>
               ),
               strong: ({ children }) => (
-                <strong style={{ fontWeight: '600', color: '#111827' }}>{children}</strong>
-              ),
-              blockquote: ({ children }) => (
-                <blockquote style={{
-                  borderLeft: '3px solid #d1d5db',
-                  paddingLeft: '12px',
-                  color: '#6b7280',
-                  margin: '8px 0',
-                  fontStyle: 'italic'
-                }}>
-                  {children}
-                </blockquote>
-              ),
-            }}
-          >
-            {message.content}
-          </ReactMarkdown>
-        )}
-
-        {/* NEW: Source citations — only rendered on completed assistant messages */}
-        {!isUser && !message.isStreaming && (
-          <SourceCitations sources={message.sources || []} ragUsed={message.rag_used || false} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-export default MessageBubble;
+                <strong style={{
