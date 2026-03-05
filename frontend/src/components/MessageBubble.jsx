@@ -139,4 +139,32 @@ function MessageBubble({ message }) {
                 <li style={{ marginBottom: '2px', fontSize: '0.875rem' }}>{children}</li>
               ),
               strong: ({ children }) => (
-                <strong style={{
+                <strong style={{ fontWeight: '600', color: '#111827' }}>{children}</strong>
+              ),
+              blockquote: ({ children }) => (
+                <blockquote style={{
+                  borderLeft: '3px solid #d1d5db',
+                  paddingLeft: '12px',
+                  color: '#6b7280',
+                  margin: '8px 0',
+                  fontStyle: 'italic'
+                }}>
+                  {children}
+                </blockquote>
+              ),
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
+        )}
+
+        {/* Source citations */}
+        {!isUser && !message.isStreaming && (
+          <SourceCitations sources={message.sources || []} ragUsed={message.rag_used || false} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default MessageBubble;
