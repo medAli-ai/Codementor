@@ -274,12 +274,18 @@ export default function DocumentLibrary() {
         </div>
 
         <div className="p-3 space-y-2">
+         
+
           <button
-            onClick={() => navigate('/chat')}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 px-4 text-sm font-medium transition-colors"
-          >
-            💬 Go to Chat
-          </button>
+    onClick={() => {
+      const lastId = sessionStorage.getItem('lastConversationId');
+      navigate(lastId ? `/chat/${lastId}` : '/chat');
+    }}
+    className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 px-4 text-sm font-medium transition-colors"
+  >
+    💬 Go to Chat
+  </button>
+
           <button
             onClick={() => setShowUpload(true)}
             className="w-full bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg py-2 px-4 text-sm font-medium transition-colors"

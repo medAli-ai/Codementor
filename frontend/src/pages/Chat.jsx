@@ -31,6 +31,12 @@ function Chat() {
     loadConversations();
   }, [user]);
 
+  useEffect(() => {
+  if (currentConversation?.id) {
+    sessionStorage.setItem('lastConversationId', currentConversation.id);
+  }
+}, [currentConversation]);
+
   // 2. When URL conversation ID changes, load that conversation
   useEffect(() => {
     if (!urlConversationId) {
