@@ -34,14 +34,17 @@ class Settings(BaseSettings):
     # ============ RAG - Embeddings ============
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIM: int = 384
-    EMBEDDING_DEVICE: str = "cpu"
+    EMBEDDING_DEVICE: str = "cuda"
     
     # ============ RAG - Retrieval ============
     RAG_TOP_K: int = 3
     RAG_SCORE_THRESHOLD: float = 0.7
-    RAG_CHUNK_SIZE: int = 512
+    RAG_CHUNK_SIZE: int = 1024
     RAG_CHUNK_OVERLAP: int = 50
-    RAG_CHUNK_THRESHOLD: float = 0.7
+    RAG_CHUNK_THRESHOLD: float = 0.5
+    # Search uses a lower threshold than RAG injection — browsing is exploratory
+    SEARCH_SCORE_THRESHOLD: float = 0.45
+    SEARCH_TOP_K: int = 8
     
     # ============ RAG - Directories ============
     RAG_DATA_DIR: str = "rag_data"

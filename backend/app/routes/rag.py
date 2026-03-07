@@ -14,12 +14,15 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.user import User
 from app.models.rag_document import RAGDocument
+from app.services.rag.retriever import get_retriever
 from app.schemas.rag import (
     UploadResponse,
     DocumentResponse,
     DocumentListResponse,
     TopicEnum,
-    DocumentStatus
+    DocumentStatus,
+    SearchResultItem,   
+    SearchResponse,
 )
 from app.core.deps import get_current_user
 from app.core.config import settings
@@ -290,3 +293,50 @@ async def delete_document(
     logger.info(f"   ✅ Deleted from database")
     
     return {"message": "Document deleted successfully", "document_id": document_id}
+
+
+@router.get("/search", response_model=SearchResponse)
+async def search_documents(
+    q: str = Query(..., min_length=1, max_length=500, description="Search query"),
+    top_k: int = Query(default=None, ge=1, le=50, description="Number of results"),
+    topic: Optional[TopicEnum] = Query(default=None, description="Filter by topic"),
+    score_threshold: Optional[float] = Query(default=None, ge=0.0, le=1.0),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Semantic search across the user's uploaded documents.
+
+    Unlike the RAG pipeline, this endpoint:
+    - Uses a lower score threshold (exploratory browsing, not LLM injection)
+    - Returns raw chunks with metadata (no LLM involved)
+    - Returns more results (SEARCH_TOP_K vs RAG_TOP_K)
+    """
+    logger.info(f"🔍 Search request from user {current_user.id}: '{q[:60]}'")
+
+    retriever = get_retriever()
+
+    results = retriever.retrieve(
+        query=q,
+        user_id=current_user.id,
+        top_k=top_k or settings.SEARCH_TOP_K,
+        score_threshold=score_threshold or settings.SEARCH_SCORE_THRESHOLD,
+        topic=topic.value if topic else None,
+        include_public=True,
+    )
+
+    items = [
+        SearchResultItem(
+            chunk_text=r["chunk_text"],
+            score=r["score"],
+            document_id=r["document_id"],
+            title=r["title"],
+            chunk_type=r.get("chunk_type", "prose"),
+            page_numbers=r.get("page_numbers", []),
+            chunk_index=r.get("chunk_index", 0),
+        )
+        for r in results
+    ]
+
+    logger.info(f"✅ Search returned {len(items)} results")
+
+    return SearchResponse(query=q, results=items, total=len(items))

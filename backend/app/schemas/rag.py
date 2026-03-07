@@ -90,3 +90,21 @@ class DocumentUploadRequest(BaseModel):
         if v and len(v) > 200:
             raise ValueError('Title must be less than 200 characters')
         return v
+    
+
+class SearchResultItem(BaseModel):
+    """A single chunk result from document search."""
+    chunk_text: str
+    score: float
+    document_id: int
+    title: str
+    chunk_type: str = "prose"          # 'prose' | 'code' | 'table'
+    page_numbers: List[int] = []
+    chunk_index: int = 0
+
+
+class SearchResponse(BaseModel):
+    """Response from the document search endpoint."""
+    query: str
+    results: List[SearchResultItem]
+    total: int
