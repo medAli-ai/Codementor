@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { conversationsAPI, streamMessage } from '../services/api';
 import MessageBubble from '../components/MessageBubble';
+import { useSearch } from '../context/useSearch';
 
 
 function Chat() {
@@ -23,6 +24,7 @@ function Chat() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { conversationId: urlConversationId } = useParams();
+  const { openSearch } = useSearch();
 
   // ============ Effects ============
 
@@ -262,6 +264,16 @@ function Chat() {
             📚 My Library
           </button>
         </div>
+        {/* Search — NEW */}
+<button
+  onClick={openSearch}
+  className="w-full bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg py-2 px-4 text-sm font-medium transition-colors text-left flex items-center justify-between"
+>
+  <span>🔍 Search Docs</span>
+  <kbd className="hidden sm:inline-flex text-xs text-gray-400 border border-gray-600 rounded px-1">
+    ⌘K
+  </kbd>
+</button>
 
         {/* Conversations List */}
         <div className="flex-1 overflow-y-auto px-3 space-y-1">
