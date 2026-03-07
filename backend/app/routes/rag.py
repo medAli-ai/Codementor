@@ -23,6 +23,8 @@ from app.schemas.rag import (
     DocumentStatus,
     SearchResultItem,   
     SearchResponse,
+    ChunkPreviewItem,       
+    ChunkPreviewResponse,   
 )
 from app.core.deps import get_current_user
 from app.core.config import settings
@@ -340,3 +342,25 @@ async def search_documents(
     logger.info(f"✅ Search returned {len(items)} results")
 
     return SearchResponse(query=q, results=items, total=len(items))
+
+
+@router.get("/chunks", response_model=ChunkPreviewResponse)
+async def get_chunk_preview(
+    document_id: int = Query(..., description="Document ID"),
+    chunk_index: int = Query(..., ge=0, description="Target chunk index"),
+    window: int = Query(default=2, ge=0, le=5, description="Neighbors on each side"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Fetch a chunk and its neighbors for the preview panel.
+
+    Returns the target chunk plus `window` chunks before and after it,
+    ordered by chunk_index. The target chunk is flagged with is_target=True.
+    """
+    retriever = get_retriever()
+    result = retriever.retrieve_chunk_preview(document_id, chunk_index, window, current_user.id)
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Chunk not found")
+
+    return ChunkPreviewResponse(**result)

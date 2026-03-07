@@ -121,7 +121,8 @@ async def chat_stream(
                                 "document_id": src['document_id'],
                                 "score": src['score'],
                                 "page_numbers": src.get('page_numbers', []),
-                                "chunk_type": src.get('chunk_type', 'prose')
+                                "chunk_type": src.get('chunk_type', 'prose'),
+                                "chunk_index": src.get('chunk_index', None)
                             }
                             for src in rag_result['sources']
                         ]
