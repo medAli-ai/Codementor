@@ -234,6 +234,25 @@ export const streamMessage = async (
   }
 };
 
+export const searchAPI = {
+  /**
+   * Semantic search across the user's documents.
+   *
+   * @param {string}  query
+   * @param {Object}  [opts]
+   * @param {number}  [opts.topK]           - max results (default: backend's SEARCH_TOP_K=8)
+   * @param {string}  [opts.topic]          - optional TopicEnum filter
+   * @param {number}  [opts.scoreThreshold] - optional override
+   */
+  search: (query, { topK, topic, scoreThreshold } = {}) => {
+    const params = new URLSearchParams({ q: query });
+    if (topK)           params.append('top_k',           topK);
+    if (topic)          params.append('topic',           topic);
+    if (scoreThreshold) params.append('score_threshold', scoreThreshold);
+    return api.get(`/api/rag/search?${params.toString()}`);
+  },
+};
+
 // ============================================================
 // DOCUMENTS — NEW
 // ============================================================
