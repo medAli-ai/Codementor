@@ -185,31 +185,41 @@ class Indexer:
     def _extract_page_elements(self, page, page_num: int) -> list[PDFElement]:
         """
         Extract typed elements from a single page.
-        
+
         Order: tables first → code blocks → prose (remaining text).
         Claimed regions prevent double-counting.
+
+        Parses page.get_text("dict") once and passes the block list
+        to both code and prose extractors to avoid redundant parsing.
         """
         elements = []
         claimed_regions = []  # list of (x0, y0, x1, y1) bboxes
-        
+
+        # Parse page structure once — shared by code + prose extractors
+        page_dict_blocks = page.get_text("dict")["blocks"]
+
         # ── 1. Extract tables ────────────────────────────────────────────
         table_elements = self._extract_tables(page, page_num)
         for el in table_elements:
             elements.append(el)
             if el.bbox:
                 claimed_regions.append(el.bbox)
-        
+
         # ── 2. Extract code blocks (monospace font spans) ────────────────
-        code_elements = self._extract_code_blocks(page, page_num, claimed_regions)
+        code_elements = self._extract_code_blocks(
+            page_dict_blocks, page_num, claimed_regions
+        )
         for el in code_elements:
             elements.append(el)
             if el.bbox:
                 claimed_regions.append(el.bbox)
-        
+
         # ── 3. Extract prose (everything not claimed) ────────────────────
-        prose_elements = self._extract_prose(page, page_num, claimed_regions)
+        prose_elements = self._extract_prose(
+            page_dict_blocks, page_num, claimed_regions
+        )
         elements.extend(prose_elements)
-        
+
         return elements
     
     def _extract_tables(self, page, page_num: int) -> list[PDFElement]:
@@ -248,7 +258,7 @@ class Indexer:
         return elements
     
     def _extract_code_blocks(
-        self, page, page_num: int, claimed_regions: list
+        self, blocks: list, page_num: int, claimed_regions: list
     ) -> list[PDFElement]:
         """
         Detect code blocks by scanning for monospace font spans.
@@ -259,7 +269,7 @@ class Indexer:
         elements = []
         
         try:
-            blocks = page.get_text("dict")["blocks"]
+            
             
             # Collect monospace blocks
             mono_blocks = []  # list of {"text": ..., "bbox": ...}
@@ -349,7 +359,7 @@ class Indexer:
         return elements
     
     def _extract_prose(
-        self, page, page_num: int, claimed_regions: list
+        self, blocks: list, page_num: int, claimed_regions: list
     ) -> list[PDFElement]:
         """
         Extract non-code, non-table text as prose.
@@ -360,7 +370,6 @@ class Indexer:
         elements = []
         
         try:
-            blocks = page.get_text("dict")["blocks"]
             prose_parts = []
             
             for block in blocks:
