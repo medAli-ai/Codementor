@@ -12,6 +12,7 @@ Pipeline:
 """
 import logging
 import pymupdf  # PyMuPDF (fitz)
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -31,6 +32,12 @@ from app.services.rag.embedder import get_embedder
 from app.services.rag.chunker import get_chunker
 
 logger = logging.getLogger(__name__)
+
+
+# Number of threads for parallel page extraction.
+# PyMuPDF releases the GIL during C-level operations, making
+# thread-based parallelism effective for page parsing.
+EXTRACTION_WORKERS = 4
 
 # Monospace font families used for code rendering in PDFs
 MONOSPACE_FONTS = {
@@ -141,6 +148,11 @@ class Indexer:
         """
         Extract typed elements (code, tables, prose) from a PDF.
         
+        Uses ThreadPoolExecutor to parallelize page extraction.
+        Each thread opens its own document handle for thread safety.
+        PyMuPDF releases the GIL during C-level operations, making
+        threads effective for this workload.
+        
         Per page, extraction order:
         1. Tables (via find_tables) — mark regions as claimed
         2. Code blocks (via monospace font detection) — mark regions as claimed
@@ -155,23 +167,52 @@ class Indexer:
         try:
             logger.info(f"📄 Extracting structured elements from: {pdf_path}")
             
+            # Open briefly just to read page count and metadata
             doc = pymupdf.open(pdf_path)
+            total_pages = len(doc)
+            doc.close()
             
             metadata = {
-                "pages_count": len(doc),
+                "pages_count": total_pages,
                 "file_size_bytes": Path(pdf_path).stat().st_size,
             }
             
+            # Split pages into ranges for parallel extraction
+            workers = min(EXTRACTION_WORKERS, total_pages)
+            pages_per_worker = total_pages // workers
+            remainder = total_pages % workers
+            
+            ranges = []
+            start = 0
+            for i in range(workers):
+                # Distribute remainder pages across first N workers
+                end = start + pages_per_worker + (1 if i < remainder else 0)
+                ranges.append((start, end))
+                start = end
+            
+            logger.info(f"   Parallelizing extraction: {workers} workers, {total_pages} pages")
+            
+            # Extract in parallel — each worker opens its own doc handle
             all_elements = []
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(
+                        self._extract_page_range, pdf_path, r[0], r[1]
+                    ): r
+                    for r in ranges
+                }
+                
+                for future in as_completed(futures):
+                    elements = future.result()
+                    all_elements.extend(elements)
+            
+            # Sort by page number to restore document order
+            all_elements.sort(key=lambda el: el.page_num)
+            
+            # Compute stats
             stats = {"code": 0, "table": 0, "prose": 0}
-            
-            for page_num, page in enumerate(doc, 1):
-                page_elements = self._extract_page_elements(page, page_num)
-                all_elements.extend(page_elements)
-                for el in page_elements:
-                    stats[el.type] += 1
-            
-            doc.close()
+            for el in all_elements:
+                stats[el.type] += 1
             
             logger.info(f"✅ Extracted {len(all_elements)} elements from {metadata['pages_count']} pages")
             logger.info(f"   Code blocks: {stats['code']}, Tables: {stats['table']}, Prose: {stats['prose']}")
@@ -181,6 +222,35 @@ class Indexer:
         except Exception as e:
             logger.error(f"❌ PDF extraction failed: {e}")
             raise
+
+    def _extract_page_range(
+        self, pdf_path: str, page_start: int, page_end: int
+        ) -> list[PDFElement]:
+        """
+        Extract elements from a range of pages using a thread-local document.
+
+        Each thread opens its own pymupdf.open() handle for thread safety.
+        PyMuPDF uses mmap internally, so multiple handles to the same file
+        share the underlying memory-mapped data with minimal overhead.
+
+        Args:
+            pdf_path: Path to PDF file
+            page_start: Start page index (0-based, inclusive)
+            page_end: End page index (0-based, exclusive)
+
+        Returns:
+            List of PDFElements with correct 1-indexed page numbers
+        """
+        doc = pymupdf.open(pdf_path)
+        elements = []
+        try:
+            for page_idx in range(page_start, page_end):
+                page = doc[page_idx]
+                page_elements = self._extract_page_elements(page, page_idx + 1)
+                elements.extend(page_elements)
+        finally:
+            doc.close()
+        return elements
     
     def _extract_page_elements(self, page, page_num: int) -> list[PDFElement]:
         """
