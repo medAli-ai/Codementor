@@ -108,6 +108,28 @@ export const authAPI = {
 };
 
 // ============================================================
+// CHUNK PREVIEW
+// ============================================================
+
+export const chunkPreviewAPI = {
+  /**
+   * Fetch a target chunk and its neighbors for the preview panel.
+   *
+   * @param {number} documentId
+   * @param {number} chunkIndex
+   * @param {number} [window=2]  - neighbors on each side
+   */
+  getChunks: (documentId, chunkIndex, window = 2) =>
+    api.get('/api/rag/chunks', {
+      params: {
+        document_id: documentId,
+        chunk_index: chunkIndex,
+        window,
+      },
+    }),
+};
+
+// ============================================================
 // CONVERSATIONS — unchanged
 // ============================================================
 export const conversationsAPI = {

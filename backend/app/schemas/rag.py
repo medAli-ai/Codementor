@@ -108,3 +108,19 @@ class SearchResponse(BaseModel):
     query: str
     results: List[SearchResultItem]
     total: int
+
+
+class ChunkPreviewItem(BaseModel):
+    """A single chunk in the preview panel (target or neighbor)."""
+    chunk_text: str
+    chunk_index: int
+    chunk_type: str = "prose"
+    page_numbers: List[int] = []
+    is_target: bool = False      
+
+
+class ChunkPreviewResponse(BaseModel):
+    """Response from the chunk preview endpoint."""
+    document_id: int
+    title: str
+    chunks: List[ChunkPreviewItem]  

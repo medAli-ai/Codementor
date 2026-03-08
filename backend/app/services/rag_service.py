@@ -265,6 +265,7 @@ class RAGService:
                         "score": r["score"],
                         "page_numbers": r.get("page_numbers", []),
                         "chunk_type": r.get("chunk_type", "prose"),
+                        "chunk_index": r.get("chunk_index", None)
                     }
                     for r in results
                 ]

@@ -221,6 +221,97 @@ class Retriever:
         
         return formatted
     
+    def retrieve_chunk_preview(
+        self,
+        document_id: int,
+        chunk_index: int,
+        user_id: int,
+        window: int = 2
+    ) -> Optional[Dict]:
+        """
+        Fetch a target chunk and its neighbors for the preview panel.
+
+        Args:
+            document_id: Document to fetch from
+            chunk_index: Index of the target chunk
+            window: Number of neighbors on each side (default 2)
+
+        Returns:
+            Dict with document title and ordered list of chunks,
+            or None if the target chunk is not found.
+        """
+        from qdrant_client.models import Range
+
+        min_idx = max(0, chunk_index - window)
+        max_idx = chunk_index + window
+
+        logger.info(
+            f"Fetching chunk preview: doc={document_id} "
+            f"idx={chunk_index} window={window}"
+        )
+
+        try:
+            results, _ = self.client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchValue(value=document_id)
+                    ),
+                    FieldCondition(
+                        key="chunk_index",
+                        range=Range(gte=min_idx, lte=max_idx)
+                    ),
+                ],
+                #should=[
+                #    FieldCondition(
+                #        key="user_id",
+                #        match=MatchValue(value=user_id)
+                #    ),
+                #    FieldCondition(
+                #        key="is_public",
+                #        match=MatchValue(value=True)
+                #    ),
+                #]
+            ),
+            limit=window * 2 + 1,
+            with_payload=True,
+            with_vectors=False,
+            )
+
+            if not results:
+                logger.warning(f"⚠️  No chunks found for doc={document_id} idx={chunk_index}")
+                return None
+
+            title = results[0].payload.get("title", "Unknown")
+
+            chunks = sorted(
+                [
+                    {
+                        "chunk_text": p.payload.get("chunk_text", ""),
+                        "chunk_index": p.payload.get("chunk_index", 0),
+                        "chunk_type": p.payload.get("chunk_type", "prose"),
+                        "page_numbers": p.payload.get("page_numbers", []),
+                        "is_target": p.payload.get("chunk_index") == chunk_index,
+                    }
+                    for p in results
+                ],
+                key=lambda c: c["chunk_index"],
+            )
+
+            logger.info(f"✅ Retrieved {len(chunks)} chunks for preview")
+
+            return {
+                "document_id": document_id,
+                "title": title,
+                "chunks": chunks,
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Chunk preview retrieval failed: {e}")
+            raise
+    
     def retrieve_by_document(
         self,
         document_id: int,

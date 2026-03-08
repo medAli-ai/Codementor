@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useChunkPreview } from '../context/useChunkPreview';
 
 // Relevance thresholds → color + label
 const scoreStyle = (score) => {
@@ -25,7 +25,7 @@ const chunkBadge = (chunkType) => {
 
 function SourceCitations({ sources = [], ragUsed = false }) {
   const [expanded, setExpanded] = useState(false);
-  const navigate = useNavigate();
+  const { openPreview } = useChunkPreview();
 
   // No RAG used or no sources → show subtle "general knowledge" tag
   if (!ragUsed || !sources.length) {
@@ -57,17 +57,22 @@ function SourceCitations({ sources = [], ragUsed = false }) {
             const badge = chunkBadge(source.chunk_type);
             return (
               <div
-                key={source.document_id ?? index}
+                key={`${source.document_id}-${source.chunk_index ?? index}`}
                 className="flex items-center justify-between rounded-lg bg-gray-50 border border-gray-200 px-3 py-2"
               >
                 {/* Left: document name + page numbers */}
                 <div className="flex items-center gap-1.5 truncate">
                   <button
-                    onClick={() => navigate(`/library?highlight=${source.document_id}`)}
-                    className="text-xs text-gray-700 hover:text-blue-600 truncate text-left font-medium"
-                  >
-                    📄 {source.title}
-                  </button>
+  onClick={() => openPreview({
+    document_id:  source.document_id,
+    chunk_index:  source.chunk_index ?? null,
+    title:        source.title,
+    chunk_type:   source.chunk_type,
+  })}
+  className="text-xs text-gray-700 hover:text-blue-600 truncate text-left font-medium"
+>
+  📄 {source.title}
+</button>
                   {source.page_numbers?.length > 0 && (
                     <span className="text-xs text-gray-400 flex-shrink-0">
                       p.{source.page_numbers.join(', ')}
