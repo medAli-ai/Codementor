@@ -8,9 +8,11 @@ import { SearchProvider } from './context/SearchContext.jsx';
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <SearchProvider>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <ChunkPreviewProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </ChunkPreviewProvider>
     </SearchProvider>
   </StrictMode>,
 )
