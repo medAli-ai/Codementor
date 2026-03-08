@@ -224,6 +224,11 @@ class Indexer:
     
     def _extract_tables(self, page, page_num: int) -> list[PDFElement]:
         """Extract tables using PyMuPDF's built-in table detection."""
+
+        # Quick pre-check: skip expensive layout analysis if no ruling lines
+        if not self._page_has_table_indicators(page):
+            logger.debug(f"   Skipping table detection on page {page_num}: no line drawings")
+            return elements
         elements = []
         
         try:
@@ -256,6 +261,25 @@ class Indexer:
             logger.debug(f"   Table extraction failed on page {page_num}: {e}")
         
         return elements
+    
+    @staticmethod
+    def _page_has_table_indicators(page) -> bool:
+        """
+        Quick check for ruling lines that indicate table presence.
+
+        Tables in PDFs are almost always rendered with horizontal/vertical
+        lines ("l") or rectangles ("re"). Pages without these drawing
+        commands overwhelmingly have no tables, so we can skip the
+        expensive find_tables() layout analysis.
+        """
+        try:
+            for drawing in page.get_drawings():
+                for item in drawing["items"]:
+                    if item[0] in ("l", "re"):  # line or rectangle
+                        return True
+        except Exception:
+            return True  # if check fails, fall through to find_tables()
+        return False
     
     def _extract_code_blocks(
         self, blocks: list, page_num: int, claimed_regions: list
