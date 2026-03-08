@@ -39,6 +39,11 @@ logger = logging.getLogger(__name__)
 # thread-based parallelism effective for page parsing.
 EXTRACTION_WORKERS = 4
 
+
+# Batch size for sentence-transformers embedding generation.
+# bge-small-en-v1.5 (33M params) handles 64 comfortably on CPU.
+EMBEDDING_BATCH_SIZE = 64
+
 # Monospace font families used for code rendering in PDFs
 MONOSPACE_FONTS = {
     "courier", "consolas", "menlo", "monaco",
@@ -147,41 +152,41 @@ class Indexer:
     def extract_pdf_elements(self, pdf_path: str) -> tuple[list[PDFElement], dict]:
         """
         Extract typed elements (code, tables, prose) from a PDF.
-        
+
         Uses ThreadPoolExecutor to parallelize page extraction.
         Each thread opens its own document handle for thread safety.
         PyMuPDF releases the GIL during C-level operations, making
         threads effective for this workload.
-        
+
         Per page, extraction order:
         1. Tables (via find_tables) — mark regions as claimed
         2. Code blocks (via monospace font detection) — mark regions as claimed
         3. Prose (everything else)
-        
+
         Args:
             pdf_path: Path to PDF file
-            
+
         Returns:
             Tuple of (elements list, metadata dict)
         """
         try:
             logger.info(f"📄 Extracting structured elements from: {pdf_path}")
-            
+
             # Open briefly just to read page count and metadata
             doc = pymupdf.open(pdf_path)
             total_pages = len(doc)
             doc.close()
-            
+
             metadata = {
                 "pages_count": total_pages,
                 "file_size_bytes": Path(pdf_path).stat().st_size,
             }
-            
+
             # Split pages into ranges for parallel extraction
             workers = min(EXTRACTION_WORKERS, total_pages)
             pages_per_worker = total_pages // workers
             remainder = total_pages % workers
-            
+
             ranges = []
             start = 0
             for i in range(workers):
@@ -189,9 +194,9 @@ class Indexer:
                 end = start + pages_per_worker + (1 if i < remainder else 0)
                 ranges.append((start, end))
                 start = end
-            
+
             logger.info(f"   Parallelizing extraction: {workers} workers, {total_pages} pages")
-            
+
             # Extract in parallel — each worker opens its own doc handle
             all_elements = []
             with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -201,24 +206,24 @@ class Indexer:
                     ): r
                     for r in ranges
                 }
-                
+
                 for future in as_completed(futures):
                     elements = future.result()
                     all_elements.extend(elements)
-            
+
             # Sort by page number to restore document order
             all_elements.sort(key=lambda el: el.page_num)
-            
+
             # Compute stats
             stats = {"code": 0, "table": 0, "prose": 0}
             for el in all_elements:
                 stats[el.type] += 1
-            
+
             logger.info(f"✅ Extracted {len(all_elements)} elements from {metadata['pages_count']} pages")
             logger.info(f"   Code blocks: {stats['code']}, Tables: {stats['table']}, Prose: {stats['prose']}")
-            
+
             return all_elements, metadata
-            
+
         except Exception as e:
             logger.error(f"❌ PDF extraction failed: {e}")
             raise
@@ -686,7 +691,7 @@ class Indexer:
             chunk_texts = [c["text"] for c in chunks]
             embeddings = self.embedder.embed_batch(
                 chunk_texts,
-                batch_size=32,
+                batch_size=EMBEDDING_BATCH_SIZE,
                 show_progress=True
             )
             
