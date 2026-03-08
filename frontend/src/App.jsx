@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import Chat from './pages/Chat';
 import DocumentLibrary from './pages/DocumentLibrary';
 import ProtectedRoute from './components/ProtectedRoute';
+import ChunkPreviewPanel from './components/ChunkPreviewPanel';
 import SearchModal from './components/SearchModal';
 
 // Cmd+K / Ctrl+K listener — lives here so it's registered once for the whole app
@@ -35,6 +36,7 @@ function App() {
       {/* SearchModal needs BrowserRouter (useNavigate) but sits outside Routes */}
       <GlobalSearchShortcut />
       <SearchModal />
+      <ChunkPreviewPanel />
 
       <Routes>
         <Route
