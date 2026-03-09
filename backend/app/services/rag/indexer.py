@@ -34,10 +34,7 @@ from app.services.rag.chunker import get_chunker
 logger = logging.getLogger(__name__)
 
 
-# Number of threads for parallel page extraction.
-# PyMuPDF releases the GIL during C-level operations, making
-# thread-based parallelism effective for page parsing.
-EXTRACTION_WORKERS = 4
+
 
 
 # Batch size for sentence-transformers embedding generation.
@@ -183,7 +180,7 @@ class Indexer:
             }
 
             # Split pages into ranges for parallel extraction
-            workers = min(EXTRACTION_WORKERS, total_pages)
+            workers = min(settings.EXTRACTION_WORKERS, total_pages)
             pages_per_worker = total_pages // workers
             remainder = total_pages % workers
 
@@ -691,7 +688,7 @@ class Indexer:
             chunk_texts = [c["text"] for c in chunks]
             embeddings = self.embedder.embed_batch(
                 chunk_texts,
-                batch_size=EMBEDDING_BATCH_SIZE,
+                batch_size=settings.EMBEDDING_BATCH_SIZE,
                 show_progress=True
             )
             
