@@ -70,21 +70,28 @@ def process_pdf_task(self, document_id: int, file_path: str):
     except Exception as e:
         logger.error(f"❌ Error processing document {document_id}: {e}")
         
-        # Update document with error
+        # Attempt retry with exponential backoff.
+        # Only mark as "failed" when all retries are exhausted.
         try:
-            document = db.query(RAGDocument).filter(RAGDocument.id == document_id).first()
-            if document:
-                document.status = "failed"
-                document.error_message = str(e)[:500]  # Limit error message length
-                db.commit()
-        except Exception as update_error:
-            logger.error(f"❌ Failed to update error status: {update_error}")
-        
-        # Retry task
-        try:
-            raise self.retry(exc=e, countdown=60)
+            countdown = 60 * (2 ** self.request.retries)
+            logger.info(
+                f"🔄 Retrying document {document_id} "
+                f"(attempt {self.request.retries + 1}/{self.max_retries}), "
+                f"next retry in {countdown}s"
+            )
+            self.retry(exc=e, countdown=countdown)
         except self.MaxRetriesExceededError:
             logger.error(f"❌ Max retries exceeded for document {document_id}")
+            try:
+                document = db.query(RAGDocument).filter(
+                    RAGDocument.id == document_id
+                ).first()
+                if document:
+                    document.status = "failed"
+                    document.error_message = str(e)[:500]
+                    db.commit()
+            except Exception as update_error:
+                logger.error(f"❌ Failed to update error status: {update_error}")
     
     finally:
         db.close()
