@@ -12,7 +12,6 @@ Pipeline:
 """
 import logging
 import pymupdf  # PyMuPDF (fitz)
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -150,11 +149,6 @@ class Indexer:
         """
         Extract typed elements (code, tables, prose) from a PDF.
 
-        Uses ThreadPoolExecutor to parallelize page extraction.
-        Each thread opens its own document handle for thread safety.
-        PyMuPDF releases the GIL during C-level operations, making
-        threads effective for this workload.
-
         Per page, extraction order:
         1. Tables (via find_tables) — mark regions as claimed
         2. Code blocks (via monospace font detection) — mark regions as claimed
@@ -169,52 +163,23 @@ class Indexer:
         try:
             logger.info(f"📄 Extracting structured elements from: {pdf_path}")
 
-            # Open briefly just to read page count and metadata
             doc = pymupdf.open(pdf_path)
-            total_pages = len(doc)
-            doc.close()
 
             metadata = {
-                "pages_count": total_pages,
+                "pages_count": len(doc),
                 "file_size_bytes": Path(pdf_path).stat().st_size,
             }
 
-            # Split pages into ranges for parallel extraction
-            workers = min(settings.EXTRACTION_WORKERS, total_pages)
-            pages_per_worker = total_pages // workers
-            remainder = total_pages % workers
-
-            ranges = []
-            start = 0
-            for i in range(workers):
-                # Distribute remainder pages across first N workers
-                end = start + pages_per_worker + (1 if i < remainder else 0)
-                ranges.append((start, end))
-                start = end
-
-            logger.info(f"   Parallelizing extraction: {workers} workers, {total_pages} pages")
-
-            # Extract in parallel — each worker opens its own doc handle
             all_elements = []
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = {
-                    executor.submit(
-                        self._extract_page_range, pdf_path, r[0], r[1]
-                    ): r
-                    for r in ranges
-                }
-
-                for future in as_completed(futures):
-                    elements = future.result()
-                    all_elements.extend(elements)
-
-            # Sort by page number to restore document order
-            all_elements.sort(key=lambda el: el.page_num)
-
-            # Compute stats
             stats = {"code": 0, "table": 0, "prose": 0}
-            for el in all_elements:
-                stats[el.type] += 1
+
+            for page_num, page in enumerate(doc, 1):
+                page_elements = self._extract_page_elements(page, page_num)
+                all_elements.extend(page_elements)
+                for el in page_elements:
+                    stats[el.type] += 1
+
+            doc.close()
 
             logger.info(f"✅ Extracted {len(all_elements)} elements from {metadata['pages_count']} pages")
             logger.info(f"   Code blocks: {stats['code']}, Tables: {stats['table']}, Prose: {stats['prose']}")
@@ -297,11 +262,9 @@ class Indexer:
     def _extract_tables(self, page, page_num: int) -> list[PDFElement]:
         """Extract tables using PyMuPDF's built-in table detection."""
 
-        # Quick pre-check: skip expensive layout analysis if no ruling lines
-        if not self._page_has_table_indicators(page):
-            logger.debug(f"   Skipping table detection on page {page_num}: no line drawings")
-            return elements
         elements = []
+        
+        
         
         try:
             tables = page.find_tables()
@@ -334,24 +297,7 @@ class Indexer:
         
         return elements
     
-    @staticmethod
-    def _page_has_table_indicators(page) -> bool:
-        """
-        Quick check for ruling lines that indicate table presence.
-
-        Tables in PDFs are almost always rendered with horizontal/vertical
-        lines ("l") or rectangles ("re"). Pages without these drawing
-        commands overwhelmingly have no tables, so we can skip the
-        expensive find_tables() layout analysis.
-        """
-        try:
-            for drawing in page.get_drawings():
-                for item in drawing["items"]:
-                    if item[0] in ("l", "re"):  # line or rectangle
-                        return True
-        except Exception:
-            return True  # if check fails, fall through to find_tables()
-        return False
+    
     
     def _extract_code_blocks(
         self, blocks: list, page_num: int, claimed_regions: list

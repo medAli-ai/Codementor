@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    EXTRACTION_WORKERS: int = 4  # For parallel PDF page extraction
+    EXTRACTION_WORKERS: int = 1  # For parallel PDF page extraction
     
     # ============ Database ============
     DATABASE_URL: str

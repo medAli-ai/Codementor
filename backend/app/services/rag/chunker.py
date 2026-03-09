@@ -57,7 +57,8 @@ class Chunker:
                 threshold=self.threshold,
                 chunk_size=self.chunk_size,
                 min_sentences_per_chunk=1,
-                skip_window=self.skip_window
+                skip_window=self.skip_window,
+                device=settings.EMBEDDING_DEVICE
             )
             logger.info(f"✅ SemanticChunker initialized successfully")
             
