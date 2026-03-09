@@ -32,6 +32,14 @@ from app.services.rag.chunker import get_chunker
 
 logger = logging.getLogger(__name__)
 
+
+
+
+
+# Batch size for sentence-transformers embedding generation.
+# bge-small-en-v1.5 (33M params) handles 64 comfortably on CPU.
+EMBEDDING_BATCH_SIZE = 64
+
 # Monospace font families used for code rendering in PDFs
 MONOSPACE_FONTS = {
     "courier", "consolas", "menlo", "monaco",
@@ -140,81 +148,123 @@ class Indexer:
     def extract_pdf_elements(self, pdf_path: str) -> tuple[list[PDFElement], dict]:
         """
         Extract typed elements (code, tables, prose) from a PDF.
-        
+
         Per page, extraction order:
         1. Tables (via find_tables) — mark regions as claimed
         2. Code blocks (via monospace font detection) — mark regions as claimed
         3. Prose (everything else)
-        
+
         Args:
             pdf_path: Path to PDF file
-            
+
         Returns:
             Tuple of (elements list, metadata dict)
         """
         try:
             logger.info(f"📄 Extracting structured elements from: {pdf_path}")
-            
+
             doc = pymupdf.open(pdf_path)
-            
+
             metadata = {
                 "pages_count": len(doc),
                 "file_size_bytes": Path(pdf_path).stat().st_size,
             }
-            
+
             all_elements = []
             stats = {"code": 0, "table": 0, "prose": 0}
-            
+
             for page_num, page in enumerate(doc, 1):
                 page_elements = self._extract_page_elements(page, page_num)
                 all_elements.extend(page_elements)
                 for el in page_elements:
                     stats[el.type] += 1
-            
+
             doc.close()
-            
+
             logger.info(f"✅ Extracted {len(all_elements)} elements from {metadata['pages_count']} pages")
             logger.info(f"   Code blocks: {stats['code']}, Tables: {stats['table']}, Prose: {stats['prose']}")
-            
+
             return all_elements, metadata
-            
+
         except Exception as e:
             logger.error(f"❌ PDF extraction failed: {e}")
             raise
+
+    def _extract_page_range(
+        self, pdf_path: str, page_start: int, page_end: int
+        ) -> list[PDFElement]:
+        """
+        Extract elements from a range of pages using a thread-local document.
+
+        Each thread opens its own pymupdf.open() handle for thread safety.
+        PyMuPDF uses mmap internally, so multiple handles to the same file
+        share the underlying memory-mapped data with minimal overhead.
+
+        Args:
+            pdf_path: Path to PDF file
+            page_start: Start page index (0-based, inclusive)
+            page_end: End page index (0-based, exclusive)
+
+        Returns:
+            List of PDFElements with correct 1-indexed page numbers
+        """
+        doc = pymupdf.open(pdf_path)
+        elements = []
+        try:
+            for page_idx in range(page_start, page_end):
+                page = doc[page_idx]
+                page_elements = self._extract_page_elements(page, page_idx + 1)
+                elements.extend(page_elements)
+        finally:
+            doc.close()
+        return elements
     
     def _extract_page_elements(self, page, page_num: int) -> list[PDFElement]:
         """
         Extract typed elements from a single page.
-        
+
         Order: tables first → code blocks → prose (remaining text).
         Claimed regions prevent double-counting.
+
+        Parses page.get_text("dict") once and passes the block list
+        to both code and prose extractors to avoid redundant parsing.
         """
         elements = []
         claimed_regions = []  # list of (x0, y0, x1, y1) bboxes
-        
+
+        # Parse page structure once — shared by code + prose extractors
+        page_dict_blocks = page.get_text("dict")["blocks"]
+
         # ── 1. Extract tables ────────────────────────────────────────────
         table_elements = self._extract_tables(page, page_num)
         for el in table_elements:
             elements.append(el)
             if el.bbox:
                 claimed_regions.append(el.bbox)
-        
+
         # ── 2. Extract code blocks (monospace font spans) ────────────────
-        code_elements = self._extract_code_blocks(page, page_num, claimed_regions)
+        code_elements = self._extract_code_blocks(
+            page_dict_blocks, page_num, claimed_regions
+        )
         for el in code_elements:
             elements.append(el)
             if el.bbox:
                 claimed_regions.append(el.bbox)
-        
+
         # ── 3. Extract prose (everything not claimed) ────────────────────
-        prose_elements = self._extract_prose(page, page_num, claimed_regions)
+        prose_elements = self._extract_prose(
+            page_dict_blocks, page_num, claimed_regions
+        )
         elements.extend(prose_elements)
-        
+
         return elements
     
     def _extract_tables(self, page, page_num: int) -> list[PDFElement]:
         """Extract tables using PyMuPDF's built-in table detection."""
+
         elements = []
+        
+        
         
         try:
             tables = page.find_tables()
@@ -247,8 +297,10 @@ class Indexer:
         
         return elements
     
+    
+    
     def _extract_code_blocks(
-        self, page, page_num: int, claimed_regions: list
+        self, blocks: list, page_num: int, claimed_regions: list
     ) -> list[PDFElement]:
         """
         Detect code blocks by scanning for monospace font spans.
@@ -259,7 +311,7 @@ class Indexer:
         elements = []
         
         try:
-            blocks = page.get_text("dict")["blocks"]
+            
             
             # Collect monospace blocks
             mono_blocks = []  # list of {"text": ..., "bbox": ...}
@@ -349,7 +401,7 @@ class Indexer:
         return elements
     
     def _extract_prose(
-        self, page, page_num: int, claimed_regions: list
+        self, blocks: list, page_num: int, claimed_regions: list
     ) -> list[PDFElement]:
         """
         Extract non-code, non-table text as prose.
@@ -360,7 +412,6 @@ class Indexer:
         elements = []
         
         try:
-            blocks = page.get_text("dict")["blocks"]
             prose_parts = []
             
             for block in blocks:
@@ -583,7 +634,7 @@ class Indexer:
             chunk_texts = [c["text"] for c in chunks]
             embeddings = self.embedder.embed_batch(
                 chunk_texts,
-                batch_size=32,
+                batch_size=settings.EMBEDDING_BATCH_SIZE,
                 show_progress=True
             )
             

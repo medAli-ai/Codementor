@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+
+    EXTRACTION_WORKERS: int = 1  # For parallel PDF page extraction
     
     # ============ Database ============
     DATABASE_URL: str
@@ -35,6 +37,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIM: int = 384
     EMBEDDING_DEVICE: str = "cuda"
+    EMBEDDING_BATCH_SIZE: int = 64
     
     # ============ RAG - Retrieval ============
     RAG_TOP_K: int = 3
@@ -63,6 +66,7 @@ class Settings(BaseSettings):
     # ============ RAG - File Upload ============
     UPLOAD_DIR: str = "/tmp/codementor_uploads"
     MAX_UPLOAD_SIZE: int = 52428800  # 50MB
+    UPLOAD_RETENTION_HOURS: int = 24
     
     # ============ Default Superadmin ============
     DEFAULT_SUPERADMIN_EMAIL: Optional[str] = None

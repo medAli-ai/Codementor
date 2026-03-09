@@ -16,7 +16,7 @@ api:
 
 # Start Celery worker for background PDF processing
 celery:
-	cd backend && uv run celery -A app.celery_app worker --loglevel=info
+	cd backend && uv run celery -A app.celery_app worker --loglevel=info --concurrency=2
 
 # ============ Frontend ============
 # Start React dev server
@@ -39,6 +39,10 @@ lint:
 
 lint-frontend:
 	cd frontend && npm run lint
+
+# Start Celery Beat scheduler for periodic tasks
+celery-beat:
+	cd backend && uv run celery -A app.celery_app beat --loglevel=info
 
 # Run tests
 test:

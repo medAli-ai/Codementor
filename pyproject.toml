@@ -21,6 +21,7 @@ dependencies = [
     "pydantic-settings>=2.12.0",
     "pydantic[email]>=2.12.5",
     "pymupdf>=1.27.1",
+    "pymupdf-layout>=1.27.1",
     "python-dotenv>=1.2.1",
     "python-jose[cryptography]>=3.5.0",
     "python-multipart>=0.0.22",
