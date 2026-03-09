@@ -16,7 +16,7 @@ api:
 
 # Start Celery worker for background PDF processing
 celery:
-	cd backend && uv run celery -A app.celery_app worker --loglevel=info
+	cd backend && uv run celery -A app.celery_app worker --loglevel=info --concurrency=2
 
 # ============ Frontend ============
 # Start React dev server
