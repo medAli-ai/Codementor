@@ -12,7 +12,7 @@ celery_app = Celery(
     "codementor",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=['app.tasks.rag_tasks']  # Import task modules
+    include=['app.tasks.rag_tasks', 'app.tasks.cleanup_tasks']  # Import task modules
 )
 
 # Celery configuration
@@ -27,6 +27,12 @@ celery_app.conf.update(
     task_soft_time_limit=25 * 60,  # Soft limit at 25 minutes
     worker_prefetch_multiplier=1,  # Fetch one task at a time
     worker_max_tasks_per_child=50,  # Restart worker after 50 tasks (prevent memory leaks)
+    beat_schedule={
+        'cleanup-expired-uploads': {
+            'task': 'codementor.cleanup-uploads',
+            'schedule': 3600.0,  # every hour
+        },
+    }
 )
 
 # Optional: Configure result expiration

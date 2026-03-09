@@ -40,6 +40,10 @@ lint:
 lint-frontend:
 	cd frontend && npm run lint
 
+# Start Celery Beat scheduler for periodic tasks
+celery-beat:
+	cd backend && uv run celery -A app.celery_app beat --loglevel=info
+
 # Run tests
 test:
 	cd backend && uv run pytest
