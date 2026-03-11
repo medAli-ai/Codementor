@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     # ============ LLM (Ollama) ============
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5-coder:7b"
+    OLLAMA_CONTEXT_WINDOW: int = 100   # qwen2.5-coder:7b max tokens
+    CONTEXT_WINDOW_BUFFER: int = 4096
     
     # ============ RAG - Qdrant ============
     QDRANT_HOST: str = "localhost"

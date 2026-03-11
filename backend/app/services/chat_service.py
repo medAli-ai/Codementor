@@ -1,3 +1,5 @@
+from pyexpat.errors import messages
+
 from sqlalchemy.orm import Session
 from typing import Optional, Dict
 from datetime import datetime
@@ -60,6 +62,41 @@ RAG_PROMPT_TEMPLATE = """Based on the following reference materials from your up
 Question: {question}
 
 Please answer using the information from these materials when relevant. If the materials don't fully cover the question, supplement with your general knowledge."""
+
+def count_tokens(text: str) -> int:
+    """Approximate token count using 4 chars per token heuristic."""
+    return len(text) // 4
+
+
+def condense_messages(
+    messages: list[dict],
+    system_prompt: str,
+    max_tokens: int
+) -> list[dict]:
+    """
+    Drop oldest messages until total token count fits within max_tokens.
+    Always preserves the last message (current user turn).
+    """
+    system_tokens = count_tokens(system_prompt)
+
+    def total_tokens(msgs):
+        return system_tokens + sum(count_tokens(m["content"]) for m in msgs)
+
+    original_count = len(messages)
+    while total_tokens(messages) > max_tokens and len(messages) > 1:
+        messages = messages[1:]  # drop oldest
+
+    dropped = original_count - len(messages)
+    if dropped:
+        logger.warning(
+            f"⚠️ Context window: dropped {dropped} oldest message(s) "
+            f"to fit within {max_tokens} tokens"
+        )
+
+    return messages
+
+
+
 
 
 def build_rag_enhanced_message(context: str, question: str) -> str:
@@ -244,6 +281,11 @@ def process_chat_message(
     
     # 4. Get LLM response (with enhanced message if RAG was used)
     messages = history + [{"role": "user", "content": enhanced_message}]
+    messages = condense_messages(
+    messages,
+    system_prompt=llm_service.SYSTEM_PROMPT,
+    max_tokens=settings.OLLAMA_CONTEXT_WINDOW - settings.CONTEXT_WINDOW_BUFFER
+)
     assistant_response = llm_service.chat(messages, temperature)
     
     # 5. Save assistant message
@@ -330,6 +372,11 @@ Question: {user_message}
     
     # 4. Stream LLM response and accumulate
     messages = history + [{"role": "user", "content": enhanced_message}]
+    messages = condense_messages(
+        messages,
+        system_prompt=llm_service.SYSTEM_PROMPT,
+        max_tokens=settings.OLLAMA_CONTEXT_WINDOW - settings.CONTEXT_WINDOW_BUFFER
+    )
     accumulated_response = ""
     
     async for chunk in llm_service.chat_stream(messages, temperature):
