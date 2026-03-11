@@ -1,6 +1,10 @@
+from urllib import response
+
 import ollama
 from typing import List, Dict, AsyncGenerator
 import logging
+
+from redis import client
 
 from app.core.config import settings
 
@@ -143,22 +147,22 @@ Remember: Your goal is to help students truly understand concepts, not just pass
             logger.info(f"🌊 Starting streaming chat with {len(messages)} message(s)")
             
             # Call Ollama with streaming enabled
-            response = ollama.chat(
-                model=self.model,
-                messages=full_messages,
-                stream=True,  # This is the key difference!
-                options={
-                    "temperature": temperature,
-                    "top_p": 0.9,
-                    "top_k": 40,
-                }
+            client = ollama.AsyncClient(host=self.host)
+            response = await client.chat(
+            model=self.model,
+            messages=full_messages,
+            stream=True,
+            options={
+                "temperature": temperature,
+                "top_p": 0.9,
+                "top_k": 40,
+            }
             )
-            
-            # Yield each chunk as it arrives
+
             chunk_count = 0
-            for chunk in response:
-                if 'message' in chunk and 'content' in chunk['message']:
-                    content = chunk['message']['content']
+            async for chunk in response:
+                if chunk.message and chunk.message.content:
+                    content = chunk.message.content
                     chunk_count += 1
                     yield content
             
