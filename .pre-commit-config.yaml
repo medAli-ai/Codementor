@@ -1,4 +1,5 @@
 repos:
+  # ── Backend: ruff ──────────────────────────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.9.10
     hooks:
@@ -7,3 +8,13 @@ repos:
         files: ^backend/
       - id: ruff-format
         files: ^backend/
+
+  # ── Frontend: ESLint ───────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        language: system
+        entry: bash -c 'cd frontend && npm run lint'
+        files: ^frontend/src/.*\.(js|jsx)$
+        pass_filenames: false
