@@ -170,7 +170,7 @@ Remember: Your goal is to help students truly understand concepts, not just pass
             
         except Exception as e:
             logger.error(f"❌ Streaming error: {e}")
-            yield f"Error: {str(e)}"
+            raise
     
     def health_check(self) -> bool:
         """

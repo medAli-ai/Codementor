@@ -8,6 +8,8 @@ from app.models import Conversation, Message
 from app.services.llm import llm_service
 from app.services.rag_service import get_rag_service
 
+END_OF_MESSAGE = "[END_OF_MESSAGE]"
+
 logger = logging.getLogger(__name__)
 
 # Initialize RAG service

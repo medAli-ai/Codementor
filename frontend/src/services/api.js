@@ -226,34 +226,34 @@ export const streamMessage = async (
   const reader  = response.body.getReader();
   const decoder = new TextDecoder();
 
-  while (true) {
+  let streamDone = false;
+
+while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
-    const text  = decoder.decode(value);
+    const text = decoder.decode(value);
     const lines = text.split('\n');
 
     for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        if (!data) continue;
-        try {
-          const parsed = JSON.parse(data);
-          if (parsed.content) onChunk(parsed.content);
-          if (parsed.done) onDone(
-            parsed.conversation_id,
-            parsed.message_id,
-            parsed.sources  ?? [],
-            parsed.rag_used ?? false,
-            parsed.conversation_title ?? null,
-          );
-          if (parsed.error) throw new Error(parsed.error);
-        } catch  {
-          // Skip malformed JSON chunks
+        if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (!data) continue;
+
+            if (data === '[END_OF_MESSAGE]') { streamDone = true; break; }
+
+            try {
+                const parsed = JSON.parse(data);
+                if (parsed.content) onChunk(parsed.content);
+                if (parsed.done) onDone(parsed.conversation_id, parsed.message_id, parsed.sources ?? [], parsed.rag_used ?? false, parsed.conversation_title ?? null);
+                if (parsed.error) throw new Error(parsed.error);
+            } catch {
+                // skip malformed chunks
+            }
         }
-      }
     }
-  }
+    if (streamDone) break;
+}
 };
 
 export const searchAPI = {
