@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.models import User
 from app.core.deps import get_current_active_user
 from app.services import chat_service
+from app.services.chat_service import END_OF_MESSAGE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -101,7 +102,7 @@ async def chat_stream(
                 if item["type"] == "chunk":
                     # Send content chunks
                     yield f"data: {json.dumps({'content': item['content']})}\n\n"
-                    await asyncio.sleep(0.08)  # Visible streaming delay
+                    #await asyncio.sleep(0.08)  # Visible streaming delay
                     
                 elif item["type"] == "done":
                     # Got final metadata
@@ -129,7 +130,7 @@ async def chat_stream(
                         rag_used = True
                     
                     # Send done signal with metadata
-                    yield f"data: {json.dumps({
+                    yield (f"data: {json.dumps({
                         'done': True,
                         'conversation_id': conversation_id,
                         'message_id': message_id,
@@ -137,15 +138,18 @@ async def chat_stream(
                         'rag_used': rag_used,  # 🆕 NEW: Whether RAG was used
                         'conversation_title': conversation_title
                     })}\n\n"
+                        f"data: {END_OF_MESSAGE}\n\n")
                     
                     logger.info(f"✅ Streaming complete (conversation: {conversation_id}, RAG used: {rag_used})")
         
         except ValueError as e:
             logger.error(f"❌ Chat error: {e}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'error': str(e), 'sources': [], 'done': True})}\n\n"
+            yield f"data: {END_OF_MESSAGE}\n\n"
         except Exception as e:
             logger.error(f"❌ Streaming error: {e}")
-            yield f"data: {json.dumps({'error': 'Internal server error'})}\n\n"
+            yield f"data: {json.dumps({'error': 'Internal server error', 'sources': [], 'done': True})}\n\n"
+            yield f"data: {END_OF_MESSAGE}\n\n"
     
     return StreamingResponse(
         generate(),
