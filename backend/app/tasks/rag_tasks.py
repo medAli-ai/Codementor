@@ -3,14 +3,17 @@ RAG Background Tasks
 
 Celery tasks for processing PDFs asynchronously.
 """
+
 import logging
 import uuid
+
 from qdrant_client.models import PointStruct
+
 from app.celery_app import celery_app
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.rag_document import RAGDocument
 from app.services.rag.indexer import get_indexer
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +22,15 @@ logger = logging.getLogger(__name__)
 def process_pdf_task(self, document_id: int, file_path: str):
     """
     Process PDF file: extract text, chunk, embed, and index.
-    
+
     Args:
         document_id: RAGDocument ID in database
         file_path: Path to uploaded PDF file
-    
+
     This task runs in background (Celery worker).
     """
     db = SessionLocal()
-    
+
     try:
         logger.info(f"📄 Processing document {document_id} from {file_path}")
 
@@ -50,46 +53,56 @@ def process_pdf_task(self, document_id: int, file_path: str):
             "title": document.title,
             "language": "java",  # Legacy field (TODO: remove)
             "topic": document.topic,
-            "is_public": document.is_public
+            "is_public": document.is_public,
         }
 
         # ── Stage 1: Extract ─────────────────────────────────────────
-        self.update_state(state='PROGRESS', meta={
-            'stage': 'extracting',
-            'detail': 'Extracting text, code blocks, and tables from PDF...',
-        })
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "stage": "extracting",
+                "detail": "Extracting text, code blocks, and tables from PDF...",
+            },
+        )
         elements, pdf_meta = indexer.extract_pdf_elements(file_path)
 
         if not elements:
             raise ValueError("No elements extracted from PDF")
 
         # ── Stage 2: Chunk ───────────────────────────────────────────
-        self.update_state(state='PROGRESS', meta={
-            'stage': 'chunking',
-            'detail': f'Chunking {len(elements)} elements...',
-        })
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "stage": "chunking",
+                "detail": f"Chunking {len(elements)} elements...",
+            },
+        )
         chunks = indexer._chunk_elements(elements)
 
         if not chunks:
             raise ValueError("No chunks generated from elements")
 
         # ── Stage 3: Embed ───────────────────────────────────────────
-        self.update_state(state='PROGRESS', meta={
-            'stage': 'embedding',
-            'detail': f'Generating embeddings for {len(chunks)} chunks...',
-        })
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "stage": "embedding",
+                "detail": f"Generating embeddings for {len(chunks)} chunks...",
+            },
+        )
         chunk_texts = [c["text"] for c in chunks]
         embeddings = indexer.embedder.embed_batch(
-            chunk_texts,
-            batch_size=settings.EMBEDDING_BATCH_SIZE,
-            show_progress=True
+            chunk_texts, batch_size=settings.EMBEDDING_BATCH_SIZE, show_progress=True
         )
 
         # ── Stage 4: Upload ──────────────────────────────────────────
-        self.update_state(state='PROGRESS', meta={
-            'stage': 'uploading',
-            'detail': f'Uploading {len(chunks)} vectors to Qdrant...',
-        })
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "stage": "uploading",
+                "detail": f"Uploading {len(chunks)} vectors to Qdrant...",
+            },
+        )
         indexer._ensure_collection(settings.QDRANT_COLLECTION)
 
         # Prepare and upload points
@@ -104,17 +117,11 @@ def process_pdf_task(self, document_id: int, file_path: str):
                 "pages_count": pdf_meta["pages_count"],
                 "file_size_bytes": pdf_meta["file_size_bytes"],
             }
-            points.append(PointStruct(
-                id=str(uuid.uuid4()),
-                vector=embedding.tolist(),
-                payload=point_metadata
-            ))
+            points.append(
+                PointStruct(id=str(uuid.uuid4()), vector=embedding.tolist(), payload=point_metadata)
+            )
 
-        indexer.client.upsert(
-            collection_name=settings.QDRANT_COLLECTION,
-            points=points,
-            wait=True
-        )
+        indexer.client.upsert(collection_name=settings.QDRANT_COLLECTION, points=points, wait=True)
 
         chunks_count = len(chunks)
         logger.info(f"✅ Indexed {chunks_count} chunks for document {document_id}")
@@ -125,14 +132,14 @@ def process_pdf_task(self, document_id: int, file_path: str):
         db.commit()
 
         logger.info(f"✅ Document {document_id} processed successfully")
-        
+
     except Exception as e:
         logger.error(f"❌ Error processing document {document_id}: {e}")
 
         # Attempt retry with exponential backoff.
         # Only mark as "failed" when all retries are exhausted.
         try:
-            countdown = 60 * (2 ** self.request.retries)
+            countdown = 60 * (2**self.request.retries)
             logger.info(
                 f"🔄 Retrying document {document_id} "
                 f"(attempt {self.request.retries + 1}/{self.max_retries}), "
@@ -142,19 +149,17 @@ def process_pdf_task(self, document_id: int, file_path: str):
         except self.MaxRetriesExceededError:
             logger.error(f"❌ Max retries exceeded for document {document_id}")
             try:
-                document = db.query(RAGDocument).filter(
-                    RAGDocument.id == document_id
-                ).first()
+                document = db.query(RAGDocument).filter(RAGDocument.id == document_id).first()
                 if document:
                     document.status = "failed"
                     document.error_message = str(e)[:500]
                     db.commit()
             except Exception as update_error:
                 logger.error(f"❌ Failed to update error status: {update_error}")
-    
+
     finally:
         db.close()
-        
+
         # Clean up uploaded file (optional)
         # import os
         # if os.path.exists(file_path):

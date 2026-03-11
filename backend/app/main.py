@@ -1,18 +1,17 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.middleware.timing import add_process_time_header
 from starlette.middleware.base import BaseHTTPMiddleware
-import logging
 
 from app.core.config import settings
-from app.routes import health, chat, websocket, auth, conversations, admin, rag
-
+from app.middleware.timing import add_process_time_header
+from app.routes import admin, auth, chat, conversations, health, rag, websocket
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
@@ -35,13 +34,14 @@ app.add_middleware(
         "http://localhost:5173",  # React app (future)
         "http://localhost:8000",  # Same origin
         "http://127.0.0.1:8000",  # Alternative localhost
-        "null"  # For file:// protocol (development only!)
+        "null",  # For file:// protocol (development only!)
     ],  # React dev server
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
 )
 app.add_middleware(BaseHTTPMiddleware, dispatch=add_process_time_header)
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -50,11 +50,13 @@ async def startup_event():
     logger.info(f"📝 Debug mode: {settings.DEBUG}")
     logger.info(f"🤖 LLM model: {settings.OLLAMA_MODEL}")
 
+
 # Shutdown event
 @app.on_event("shutdown")
 async def shutdown_event():
     """Runs when the application shuts down"""
     logger.info("👋 Shutting down...")
+
 
 # Root endpoint
 @app.get("/")
@@ -62,28 +64,22 @@ async def root():
     """
     Root endpoint - returns basic API info
     """
-    return {
-        "app": settings.APP_NAME,
-        "version": "1.0.0",
-        "status": "running",
-        "docs": "/api/docs"
-    }
+    return {"app": settings.APP_NAME, "version": "1.0.0", "status": "running", "docs": "/api/docs"}
+
 
 # Include routers
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(websocket.router, prefix="/api/ws", tags=["websocket"])
-app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])  
+app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(conversations.router, prefix="/api/conversations", tags=["conversations"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(rag.router, prefix="/api")
+
 
 @app.get("/api/test")
 async def test():
     """
     Test endpoint to verify API is working
     """
-    return {
-        "message": "API is working!",
-        "model": settings.OLLAMA_MODEL
-    }
+    return {"message": "API is working!", "model": settings.OLLAMA_MODEL}

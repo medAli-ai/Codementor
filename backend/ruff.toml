@@ -1,0 +1,14 @@
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]  # line too long — handled by formatter
+
+[lint.per-file-ignores]
+"backend/alembic/*" = ["E", "F", "W"]  # ignore migration files
+
+[format]
+quote-style = "double"
+indent-style = "space"
+exclude = ["alembic/*"]

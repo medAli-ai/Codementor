@@ -1,10 +1,7 @@
-from urllib import response
+import logging
+from typing import AsyncGenerator, Dict, List
 
 import ollama
-from typing import List, Dict, AsyncGenerator
-import logging
-
-from redis import client
 
 from app.core.config import settings
 
@@ -14,14 +11,14 @@ logger = logging.getLogger(__name__)
 class LLMService:
     """
     Service for interacting with Ollama LLM.
-    
+
     This service handles:
     - Chat completions (streaming and non-streaming)
     - System prompt management
     - Error handling
     - Health checks
     """
-    
+
     # System prompt defines the AI's behavior and personality
     # 🆕 UPDATED: Added RAG awareness
     SYSTEM_PROMPT = r"""You are CodeMentor, an expert programming tutor specializing in helping students prepare for coding exams and interviews.
@@ -74,19 +71,19 @@ Remember: Your goal is to help students truly understand concepts, not just pass
         self.model = settings.OLLAMA_MODEL
         self.host = settings.OLLAMA_HOST
         logger.info(f"🤖 LLM Service initialized with model: {self.model}")
-    
+
     def chat(self, messages: List[Dict[str, str]], temperature: float = 0.7) -> str:
         """
         Send a chat request to Ollama (non-streaming).
-        
+
         Args:
             messages: List of message dicts with 'role' and 'content'
                      Example: [{"role": "user", "content": "Explain loops"}]
             temperature: Sampling temperature (0.0 = deterministic, 1.0 = creative)
-        
+
         Returns:
             Complete response as a string
-        
+
         Raises:
             Exception: If Ollama is not accessible or request fails
         """
@@ -94,11 +91,11 @@ Remember: Your goal is to help students truly understand concepts, not just pass
             # Prepend system prompt to guide the AI's behavior
             full_messages = [
                 {"role": "system", "content": self.SYSTEM_PROMPT},
-                *messages  # Unpack user's messages
+                *messages,  # Unpack user's messages
             ]
-            
+
             logger.info(f"💬 Sending chat request with {len(messages)} message(s)")
-            
+
             # Call Ollama API
             response = ollama.chat(
                 model=self.model,
@@ -106,57 +103,52 @@ Remember: Your goal is to help students truly understand concepts, not just pass
                 options={
                     "temperature": temperature,
                     "top_p": 0.9,  # Nucleus sampling
-                    "top_k": 40,   # Top-k sampling
-                }
+                    "top_k": 40,  # Top-k sampling
+                },
             )
-            
+
             # Extract content from response
-            content = response['message']['content']
+            content = response["message"]["content"]
             logger.info(f"✅ Received response ({len(content)} chars)")
             return content
-            
+
         except Exception as e:
             logger.error(f"❌ LLM error: {e}")
             raise Exception(f"Failed to get LLM response: {str(e)}")
-    
+
     async def chat_stream(
-        self,
-        messages: List[Dict[str, str]],
-        temperature: float = 0.7
+        self, messages: List[Dict[str, str]], temperature: float = 0.7
     ) -> AsyncGenerator[str, None]:
         """
         Stream chat responses from Ollama token-by-token.
-        
+
         This is better for UX - users see responses appearing in real-time
         instead of waiting for the complete response.
-        
+
         Args:
             messages: List of message dicts
             temperature: Sampling temperature
-        
+
         Yields:
             Response chunks as they're generated
         """
         try:
             # Prepend system prompt
-            full_messages = [
-                {"role": "system", "content": self.SYSTEM_PROMPT},
-                *messages
-            ]
-            
+            full_messages = [{"role": "system", "content": self.SYSTEM_PROMPT}, *messages]
+
             logger.info(f"🌊 Starting streaming chat with {len(messages)} message(s)")
-            
+
             # Call Ollama with streaming enabled
             client = ollama.AsyncClient(host=self.host)
             response = await client.chat(
-            model=self.model,
-            messages=full_messages,
-            stream=True,
-            options={
-                "temperature": temperature,
-                "top_p": 0.9,
-                "top_k": 40,
-            }
+                model=self.model,
+                messages=full_messages,
+                stream=True,
+                options={
+                    "temperature": temperature,
+                    "top_p": 0.9,
+                    "top_k": 40,
+                },
             )
 
             chunk_count = 0
@@ -165,17 +157,17 @@ Remember: Your goal is to help students truly understand concepts, not just pass
                     content = chunk.message.content
                     chunk_count += 1
                     yield content
-            
+
             logger.info(f"✅ Streaming complete ({chunk_count} chunks)")
-            
+
         except Exception as e:
             logger.error(f"❌ Streaming error: {e}")
             raise
-    
+
     def health_check(self) -> bool:
         """
         Check if Ollama service is accessible.
-        
+
         Returns:
             True if Ollama is running and accessible, False otherwise
         """

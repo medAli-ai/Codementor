@@ -1,8 +1,10 @@
-import time
 import logging
+import time
+
 from fastapi import Request
 
 logger = logging.getLogger(__name__)
+
 
 async def add_process_time_header(request: Request, call_next):
     start = time.perf_counter_ns()

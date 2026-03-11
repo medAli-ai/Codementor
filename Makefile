@@ -47,3 +47,6 @@ celery-beat:
 # Run tests
 test:
 	cd backend && uv run pytest
+
+hooks:
+	pre-commit install
