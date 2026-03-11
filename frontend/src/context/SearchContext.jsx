@@ -1,6 +1,5 @@
-import { createContext, useState, useCallback } from 'react';
-
-export const SearchContext = createContext(null);
+import { useState, useCallback } from 'react';
+import { SearchContext } from './SearchContext.js';
 
 export function SearchProvider({ children }) {
   const [isOpen, setIsOpen] = useState(false);

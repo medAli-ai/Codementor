@@ -1,11 +1,9 @@
-import { createContext, useState, useCallback } from 'react';
-
-export const ChunkPreviewContext = createContext(null);
+import { useState, useCallback } from 'react';
+import { ChunkPreviewContext } from './ChunkPreviewContext.js';
 
 export function ChunkPreviewProvider({ children }) {
   const [isOpen,  setIsOpen]  = useState(false);
   const [preview, setPreview] = useState(null);
-  // preview shape: { document_id, chunk_index, title, chunk_type }
 
   const openPreview = useCallback((data) => {
     setPreview(data);

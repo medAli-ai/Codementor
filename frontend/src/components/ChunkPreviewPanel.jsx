@@ -1,8 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useChunkPreview } from '../context/useChunkPreview';
 import { chunkPreviewAPI } from '../services/api';
+
+// ── Reducer ───────────────────────────────────────────────────────────────────
+const initialState = { chunks: [], title: '', loading: false, error: null };
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'FETCH_START':   return { ...state, loading: true, error: null, chunks: [] };
+    case 'FETCH_SUCCESS': return { ...state, loading: false, chunks: action.chunks, title: action.title };
+    case 'FETCH_ERROR':   return { ...state, loading: false, error: action.error };
+    default:              return state;
+  }
+}
 
 // ── Chunk type badge — same colours as SearchModal / SourceCitations ──────────
 const CHUNK_BADGE = {
@@ -100,37 +112,26 @@ function SkeletonPanel() {
 // ── Main panel ─────────────────────────────────────────────────────────────────
 export default function ChunkPreviewPanel() {
   const { isOpen, preview, closePreview } = useChunkPreview();
-  const [chunks, setChunks]   = useState([]);
-  const [title,  setTitle]    = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState(null);
+  const [state, dispatch] = useReducer(reducer, initialState);
+  const { chunks, title, loading, error } = state;
 
   // Fetch chunks whenever the preview target changes
   useEffect(() => {
-    if (!preview) return;
+    if (!preview || preview.chunk_index == null) return;
 
-    // Graceful fallback — old messages don't have chunk_index
-    if (preview.chunk_index == null) {
-      setChunks([]);
-      setError('no_index');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setChunks([]);
+    dispatch({ type: 'FETCH_START' });
 
     chunkPreviewAPI
       .getChunks(preview.document_id, preview.chunk_index, 2)
-      .then(res => {
-        setChunks(res.data.chunks ?? []);
-        setTitle(res.data.title ?? preview.title ?? '');
-      })
+      .then(res => dispatch({
+        type: 'FETCH_SUCCESS',
+        chunks: res.data.chunks ?? [],
+        title: res.data.title ?? preview.title ?? '',
+      }))
       .catch(err => {
         console.error('Chunk preview failed:', err);
-        setError('fetch_failed');
-      })
-      .finally(() => setLoading(false));
+        dispatch({ type: 'FETCH_ERROR', error: 'fetch_failed' });
+      });
   }, [preview]);
 
   // Escape key closes panel
@@ -184,7 +185,7 @@ export default function ChunkPreviewPanel() {
           {loading && <SkeletonPanel />}
 
           {/* No chunk_index — old message fallback */}
-          {!loading && error === 'no_index' && (
+          {!loading && preview?.chunk_index == null && preview && (
             <div className="flex flex-col items-center justify-center h-full text-center px-6">
               <p className="text-3xl mb-3">📋</p>
               <p className="text-sm font-medium text-gray-600">Context unavailable</p>

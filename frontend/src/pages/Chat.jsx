@@ -66,7 +66,7 @@ function Chat() {
     }))
   ))
       .catch(err => console.error('Failed to load conversation:', err));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [urlConversationId, conversations]);
 
   // 3. Auto-scroll to latest message
