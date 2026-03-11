@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from app.middleware.timing import add_process_time_header
+from starlette.middleware.base import BaseHTTPMiddleware
 import logging
 
 from app.core.config import settings
@@ -39,6 +41,7 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
 )
+app.add_middleware(BaseHTTPMiddleware, dispatch=add_process_time_header)
 
 @app.on_event("startup")
 async def startup_event():
