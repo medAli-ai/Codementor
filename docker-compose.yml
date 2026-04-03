@@ -65,7 +65,6 @@ services:
   celery_worker:
     build:
       context: ./backend
-      dockerfile: Dockerfile.celery
     container_name: codementor_celery
     command: celery -A app.celery_app worker --loglevel=info --concurrency=4
     volumes:

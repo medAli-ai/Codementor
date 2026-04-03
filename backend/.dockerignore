@@ -1,0 +1,27 @@
+# Virtual environment — reinstalled inside the image by uv sync
+.venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Local environment config — never bake secrets into an image
+.env
+.env.*
+
+# User-uploaded files — not part of the application
+uploads/
+
+# Dev and test artefacts
+.pytest_cache/
+.ruff_cache/
+*.log
+
+# Editor metadata
+.vscode/
+.idea/
+
+# Alembic migration output not needed at build time
+# (migrations run separately via `alembic upgrade head`)
+# alembic/versions/ is intentionally NOT excluded — the app imports from it
