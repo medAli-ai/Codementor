@@ -314,7 +314,7 @@ class RAGService:
         return best_topic
 
     def get_context(
-        self, query: str, user_id: int, conversation_context: Optional[str] = None
+        self, query: str, user_id: int, conversation_context: Optional[bool] = None
     ) -> Optional[Dict]:
         """
         Get RAG context for a query (seamless, automatic).
@@ -325,7 +325,7 @@ class RAGService:
         Args:
             query: User's question
             user_id: Current user ID
-            conversation_context: Previous conversation (for future use)
+            conversation_context: True if recent messages had RAG active, False otherwise
 
         Returns:
             Dict with context info, or None if RAG not applicable
@@ -333,8 +333,12 @@ class RAGService:
         try:
             # 1. Check if programming-related
             if not self.is_programming_question(query):
-                logger.info("⏭️  Skipping RAG (not programming-related)")
-                return None
+                if not conversation_context:
+                    logger.info("⏭️  Skipping RAG (not programming-related)")
+                    return None
+                logger.info(
+                    "🔄 Follow-up detected — attempting retrieval despite no programming keywords"
+                )
 
             # 2. Detect topic (optional filter)
             topic = self.detect_topic(query)

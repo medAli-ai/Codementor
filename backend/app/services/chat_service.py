@@ -182,7 +182,9 @@ def load_conversation_history(conversation_id: int, db: Session) -> list[dict[st
     # Reverse to chronological order (oldest first)
     messages.reverse()
 
-    history = [{"role": msg.role, "content": msg.content} for msg in messages]
+    history = [
+        {"role": msg.role, "content": msg.content, "rag_used": msg.rag_used} for msg in messages
+    ]
 
     logger.info(f"📜 Loaded {len(history)} history messages for conversation {conversation_id}")
 
@@ -218,6 +220,7 @@ def process_chat_message(
 
     # 2. Load conversation history (before saving current message)
     history = load_conversation_history(conversation.id, db)
+    recent_rag_active = any(msg.get("rag_used", False) for msg in history[-3:])
 
     # 2. Save user message
     save_message(conversation_id=conversation.id, role="user", content=user_message, db=db)
@@ -229,7 +232,9 @@ def process_chat_message(
     if use_rag:
         try:
             logger.info("🔍 Checking for RAG context...")
-            rag_context = rag_service.get_context(query=user_message, user_id=user_id)
+            rag_context = rag_service.get_context(
+                query=user_message, user_id=user_id, conversation_context=recent_rag_active
+            )
             if rag_context:
                 logger.info(
                     f"✅ RAG context retrieved: {rag_context['chunks_count']} chunks from {len(rag_context['sources'])} documents"
@@ -251,7 +256,9 @@ def process_chat_message(
         # Continue without RAG if it fails - graceful degradation
 
     # 4. Get LLM response (with enhanced message if RAG was used)
-    messages = history + [{"role": "user", "content": enhanced_message}]
+    messages = [{"role": m["role"], "content": m["content"]} for m in history] + [
+        {"role": "user", "content": enhanced_message}
+    ]
     messages = condense_messages(
         messages,
         system_prompt=llm_service.SYSTEM_PROMPT,
@@ -300,6 +307,7 @@ async def process_chat_message_stream(
 
     # 2. Load conversation history (before saving current message)
     history = load_conversation_history(conversation.id, db)
+    recent_rag_active = any(msg.get("rag_used", False) for msg in history[-3:])
 
     # 3. Save user message
     save_message(conversation_id=conversation.id, role="user", content=user_message, db=db)
@@ -311,7 +319,9 @@ async def process_chat_message_stream(
     if use_rag:
         try:
             logger.info("🔍 Checking for RAG context...")
-            rag_context = rag_service.get_context(query=user_message, user_id=user_id)
+            rag_context = rag_service.get_context(
+                query=user_message, user_id=user_id, conversation_context=recent_rag_active
+            )
             if rag_context:
                 logger.info(f"✅ RAG context retrieved: {rag_context['chunks_count']} chunks")
                 enhanced_message = f"""Based on your uploaded documents:
@@ -334,7 +344,9 @@ Question: {user_message}
         # Continue without RAG if it fails
 
     # 4. Stream LLM response and accumulate
-    messages = history + [{"role": "user", "content": enhanced_message}]
+    messages = [{"role": m["role"], "content": m["content"]} for m in history] + [
+        {"role": "user", "content": enhanced_message}
+    ]
     messages = condense_messages(
         messages,
         system_prompt=llm_service.SYSTEM_PROMPT,
