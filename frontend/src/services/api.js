@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL ?? '';;
 
 const api = axios.create({
   baseURL: API_URL,
@@ -170,7 +170,7 @@ async function refreshAccessToken() {
 
 // ─── Helper: perform one fetch attempt to the stream endpoint ───────────────
 async function fetchStream(token, message, conversationId, temperature, useRag) {
-  return fetch('http://localhost:8000/api/chat/stream', {
+  return fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

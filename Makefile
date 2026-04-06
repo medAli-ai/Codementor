@@ -16,7 +16,7 @@ api:
 
 # Start Celery worker for background PDF processing
 celery:
-	cd backend && uv run celery -A app.celery_app worker --loglevel=info --concurrency=2
+	cd backend && uv run celery -A app.celery_app worker --loglevel=info --concurrency=4
 
 # ============ Frontend ============
 # Start React dev server
@@ -50,3 +50,13 @@ test:
 
 hooks:
 	pre-commit install
+
+# ============ Dev Infrastructure ============
+dev-infra:
+	docker compose -f docker-compose.dev.yml up -d
+
+dev-infra-down:
+	docker compose -f docker-compose.dev.yml down
+
+dev-infra-logs:
+	docker compose -f docker-compose.dev.yml logs -f

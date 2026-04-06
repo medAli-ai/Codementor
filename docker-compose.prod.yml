@@ -1,0 +1,204 @@
+services:
+
+  # ── Ollama (LLM inference) ─────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama
+    container_name: codementor_ollama
+    
+    volumes:
+      - ollama_data:/root/.ollama   # persists pulled models across restarts
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5 bash -c 'cat < /dev/null > /dev/tcp/localhost/11434'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - codementor_network
+    restart: unless-stopped
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: codementor_postgres
+    environment:
+      POSTGRES_DB: codementor
+      POSTGRES_USER: codementor_user
+      POSTGRES_PASSWORD: dali1992
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codementor_user -d codementor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - codementor_network
+    restart: unless-stopped
+
+  # ── Qdrant (vector database) ───────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: codementor_qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5 bash -c 'cat < /dev/null > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - codementor_network
+    restart: unless-stopped
+
+  # ── Redis (message broker + cache) ────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: codementor_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - codementor_network
+    restart: unless-stopped
+
+  # ── Migrate (runs once and exits) ─────────────────────────────────────────
+  # api depends on this completing successfully before it starts.
+  # Prevents the API from booting against a schema that isn't ready.
+  migrate:
+    build:
+      context: ./backend
+    container_name: codementor_migrate
+    command: alembic upgrade head
+    env_file: ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://codementor_user:dali1992@postgres:5432/codementor
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - codementor_network
+    restart: "no"   # must not restart — it's a one-shot task
+
+  # ── API (FastAPI) ──────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+    container_name: codementor_api
+    env_file: ./backend/.env
+    environment:
+      # Override .env values that must point to container service names
+      - TZ=Africa/Tunis
+      - UPLOAD_DIR=/app/uploads
+      - DATABASE_URL=postgresql://codementor_user:dali1992@postgres:5432/codementor
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_HOST=qdrant
+      - OLLAMA_HOST=http://ollama:11434
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Keep embeddings on CPU — leaves full GPU VRAM free for Ollama (qwen2.5-coder:7b = 4.7GB)
+      - EMBEDDING_DEVICE=cpu
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads_data:/app/uploads   # shared with celery_worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - codementor_network
+    restart: unless-stopped
+
+  # ── Celery worker ──────────────────────────────────────────────────────────
+  celery_worker:
+    build:
+      context: ./backend
+    container_name: codementor_celery
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=4
+    env_file: ./backend/.env
+    environment:
+      - TZ=Africa/Tunis
+      - UPLOAD_DIR=/app/uploads
+      - DATABASE_URL=postgresql://codementor_user:dali1992@postgres:5432/codementor
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_HOST=qdrant
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - EMBEDDING_DEVICE=cpu
+    volumes:
+      - uploads_data:/app/uploads   # shared with api
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - codementor_network
+    restart: unless-stopped
+
+  # ── Frontend (Nginx serving React) ────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+    container_name: codementor_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - codementor_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  redis_data:
+  ollama_data:
+  uploads_data:
+
+networks:
+  codementor_network:
+    driver: bridge
