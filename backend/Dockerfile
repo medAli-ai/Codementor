@@ -13,6 +13,9 @@ COPY pyproject.toml uv.lock ./
 # Install production dependencies only into an in-project virtualenv
 RUN uv sync --frozen --no-dev
 
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 # Put the venv on PATH so uvicorn/celery are callable without `uv run`
 ENV PATH="/app/.venv/bin:$PATH"
 

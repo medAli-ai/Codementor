@@ -170,7 +170,7 @@ async function refreshAccessToken() {
 
 // ─── Helper: perform one fetch attempt to the stream endpoint ───────────────
 async function fetchStream(token, message, conversationId, temperature, useRag) {
-  return fetch('http://localhost:8000/api/chat/stream', {
+  return fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
