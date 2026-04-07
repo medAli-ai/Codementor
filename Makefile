@@ -3,11 +3,10 @@
 # ============ Infrastructure ============
 # Start Docker services (Postgres, Qdrant, Redis)
 infra:
-	docker compose up -d postgres qdrant redis
+	docker compose -f docker-compose.dev.yml up -d postgres qdrant redis
 
-# Stop all Docker services
 infra-down:
-	docker compose down
+	docker compose -f docker-compose.dev.yml down
 
 # ============ Backend ============
 # Start FastAPI server with hot reload
