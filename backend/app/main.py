@@ -32,10 +32,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",  # React app (future)
-        "http://localhost:8000",  # Same origin
-        "http://127.0.0.1:8000",  # Alternative localhost
-        "null",  # For file:// protocol (development only!)
-    ],  # React dev server
+    ],
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
