@@ -9,6 +9,7 @@ __pycache__/
 # Local environment config — never bake secrets into an image
 .env
 .env.*
+!.env.example
 
 # User-uploaded files — not part of the application
 uploads/
