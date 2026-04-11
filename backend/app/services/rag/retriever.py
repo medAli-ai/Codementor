@@ -269,7 +269,7 @@ class Retriever:
         return formatted
 
     def retrieve_chunk_preview(
-        self, document_id: int, chunk_index: int, user_id: int, window: int = 2
+        self, document_id: int, chunk_index: int, window: int = 2
     ) -> Optional[Dict]:
         """
         Fetch a target chunk and its neighbors for the preview panel.
@@ -298,16 +298,6 @@ class Retriever:
                         FieldCondition(key="document_id", match=MatchValue(value=document_id)),
                         FieldCondition(key="chunk_index", range=Range(gte=min_idx, lte=max_idx)),
                     ],
-                    # should=[
-                    #    FieldCondition(
-                    #        key="user_id",
-                    #        match=MatchValue(value=user_id)
-                    #    ),
-                    #    FieldCondition(
-                    #        key="is_public",
-                    #        match=MatchValue(value=True)
-                    #    ),
-                    # ]
                 ),
                 limit=window * 2 + 1,
                 with_payload=True,
@@ -347,7 +337,7 @@ class Retriever:
             raise
 
     async def aretrieve_chunk_preview(
-        self, document_id: int, chunk_index: int, user_id: int, window: int = 2
+        self, document_id: int, chunk_index: int, window: int = 2
     ) -> Optional[Dict]:
         """Async version of retrieve_chunk_preview(). Uses AsyncQdrantClient."""
         from qdrant_client.models import Range
