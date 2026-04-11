@@ -8,7 +8,7 @@ Filters by user ownership (private) and public documents.
 import logging
 from typing import Dict, List, Optional
 
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue, ScoredPoint
 
 from app.core.config import settings
@@ -58,10 +58,16 @@ class Retriever:
         try:
             self.client = QdrantClient(url=self.qdrant_url)
             self.embedder = get_embedder()
+            self.async_client = AsyncQdrantClient(url=self.qdrant_url)
             logger.info("✅ Retriever initialized successfully")
         except Exception as e:
             logger.error(f"❌ Failed to initialize retriever: {e}")
             raise
+
+    async def close(self) -> None:
+        """Close the async Qdrant client connection."""
+        await self.async_client.close()
+        logger.info("🔌 AsyncQdrantClient closed")
 
     def retrieve(
         self,
@@ -138,6 +144,55 @@ class Retriever:
 
         except Exception as e:
             logger.error(f"❌ Retrieval failed: {e}")
+            import traceback
+
+            traceback.print_exc()
+            raise
+
+    async def aretrieve(
+        self,
+        query: str,
+        user_id: Optional[int] = None,
+        top_k: Optional[int] = None,
+        topic: Optional[str] = None,
+        score_threshold: Optional[float] = None,
+        include_public: bool = True,
+    ) -> List[Dict]:
+        """Async version of retrieve(). Uses AsyncQdrantClient for FastAPI routes."""
+        try:
+            top_k = top_k or self.top_k
+            score_threshold = score_threshold or self.score_threshold
+
+            logger.info(f"🔍 [async] Retrieving context for query: '{query[:50]}...'")
+            logger.info(f"   User ID: {user_id}")
+
+            query_embedding = self.embedder.embed(query)
+            search_filter = self._build_filter(user_id, include_public, topic)
+
+            search_results = await self.async_client.query_points(
+                collection_name=self.collection_name,
+                query=query_embedding.tolist(),
+                query_filter=search_filter,
+                limit=top_k,
+                score_threshold=score_threshold,
+            )
+
+            points = search_results.points if hasattr(search_results, "points") else search_results
+            logger.info(f"✅ Found {len(points)} results")
+
+            results = self._format_results(points)
+
+            for i, result in enumerate(results, 1):
+                logger.info(
+                    f"   Result {i}: score={result['score']:.3f}, "
+                    f"doc={result['document_id']}, "
+                    f"title='{result['title']}'"
+                )
+
+            return results
+
+        except Exception as e:
+            logger.error(f"❌ Async retrieval failed: {e}")
             import traceback
 
             traceback.print_exc()
@@ -291,6 +346,58 @@ class Retriever:
             logger.error(f"❌ Chunk preview retrieval failed: {e}")
             raise
 
+    async def aretrieve_chunk_preview(
+        self, document_id: int, chunk_index: int, user_id: int, window: int = 2
+    ) -> Optional[Dict]:
+        """Async version of retrieve_chunk_preview(). Uses AsyncQdrantClient."""
+        from qdrant_client.models import Range
+
+        min_idx = max(0, chunk_index - window)
+        max_idx = chunk_index + window
+
+        logger.info(f"[async] Fetching chunk preview: doc={document_id} idx={chunk_index}")
+
+        try:
+            results, _ = await self.async_client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(key="document_id", match=MatchValue(value=document_id)),
+                        FieldCondition(key="chunk_index", range=Range(gte=min_idx, lte=max_idx)),
+                    ]
+                ),
+                limit=window * 2 + 1,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            if not results:
+                logger.warning(f"⚠️  No chunks found for doc={document_id} idx={chunk_index}")
+                return None
+
+            title = results[0].payload.get("title", "Unknown")
+
+            chunks = sorted(
+                [
+                    {
+                        "chunk_text": p.payload.get("chunk_text", ""),
+                        "chunk_index": p.payload.get("chunk_index", 0),
+                        "chunk_type": p.payload.get("chunk_type", "prose"),
+                        "page_numbers": p.payload.get("page_numbers", []),
+                        "is_target": p.payload.get("chunk_index") == chunk_index,
+                    }
+                    for p in results
+                ],
+                key=lambda c: c["chunk_index"],
+            )
+
+            logger.info(f"✅ Retrieved {len(chunks)} chunks for preview")
+            return {"document_id": document_id, "title": title, "chunks": chunks}
+
+        except Exception as e:
+            logger.error(f"❌ Async chunk preview retrieval failed: {e}")
+            raise
+
     def retrieve_by_document(self, document_id: int, limit: int = 10) -> List[Dict]:
         """
         Retrieve chunks from a specific document.
@@ -339,6 +446,40 @@ class Retriever:
 
         except Exception as e:
             logger.error(f"❌ Failed to retrieve document chunks: {e}")
+            raise
+
+    async def aretrieve_by_document(self, document_id: int, limit: int = 10) -> List[Dict]:
+        """Async version of retrieve_by_document(). Uses AsyncQdrantClient."""
+        try:
+            logger.info(f"[async] Retrieving chunks from document {document_id}")
+
+            results, _ = await self.async_client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]
+                ),
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            logger.info(f"✅ Retrieved {len(results)} chunks from document {document_id}")
+
+            formatted = [
+                {
+                    "chunk_text": point.payload.get("chunk_text", ""),
+                    "chunk_index": point.payload.get("chunk_index", 0),
+                    "document_id": document_id,
+                    "title": point.payload.get("title", "Unknown"),
+                }
+                for point in results
+            ]
+
+            formatted.sort(key=lambda x: x["chunk_index"])
+            return formatted
+
+        except Exception as e:
+            logger.error(f"❌ Async document chunk retrieval failed: {e}")
             raise
 
 

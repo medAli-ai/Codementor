@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.middleware.timing import add_process_time_header
 from app.routes import admin, auth, chat, conversations, health, rag, websocket
+from app.services.rag.retriever import get_retriever
 
 # Configure logging
 logging.basicConfig(
@@ -16,6 +18,24 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ──────────────────────────────────────────────
+    logger.info(f"🚀 Starting {settings.APP_NAME} v1.0.0")
+    logger.info(f"📝 Debug mode: {settings.DEBUG}")
+    logger.info(f"🤖 LLM model: {settings.OLLAMA_MODEL}")
+    get_retriever()
+    logger.info("🔍 Retriever initialized")
+
+    yield
+
+    # ── Shutdown ─────────────────────────────────────────────
+    logger.info("👋 Shutting down...")
+    retriever = get_retriever()
+    await retriever.close()
+
+
 # Create FastAPI application
 app = FastAPI(
     title=settings.APP_NAME,
@@ -23,6 +43,7 @@ app = FastAPI(
     description="AI-powered coding tutor for exam preparation",
     docs_url="/api/docs",  # Swagger UI
     redoc_url="/api/redoc",  # ReDoc UI
+    lifespan=lifespan,
 )
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -38,21 +59,6 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 app.add_middleware(BaseHTTPMiddleware, dispatch=add_process_time_header)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Runs when the application starts"""
-    logger.info(f"🚀 Starting {settings.APP_NAME} v1.0.0")
-    logger.info(f"📝 Debug mode: {settings.DEBUG}")
-    logger.info(f"🤖 LLM model: {settings.OLLAMA_MODEL}")
-
-
-# Shutdown event
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Runs when the application shuts down"""
-    logger.info("👋 Shutting down...")
 
 
 # Root endpoint
