@@ -340,6 +340,7 @@ async def get_chunk_preview(
     chunk_index: int = Query(..., ge=0, description="Target chunk index"),
     window: int = Query(default=2, ge=0, le=5, description="Neighbors on each side"),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Fetch a chunk and its neighbors for the preview panel.
@@ -347,8 +348,14 @@ async def get_chunk_preview(
     Returns the target chunk plus `window` chunks before and after it,
     ordered by chunk_index. The target chunk is flagged with is_target=True.
     """
+    document = db.query(RAGDocument).filter(RAGDocument.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if document.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     retriever = get_retriever()
-    result = retriever.retrieve_chunk_preview(document_id, chunk_index, window, current_user.id)
+    result = retriever.retrieve_chunk_preview(document_id, chunk_index, window)
 
     if not result:
         raise HTTPException(status_code=404, detail="Chunk not found")
