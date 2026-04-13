@@ -1,44 +1,33 @@
 """
 Admin-only routes.
-
-Demonstrates RBAC protection using get_current_admin dependency.
 """
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.rbac import get_current_admin, get_current_superadmin
 from app.db.session import get_db
-from app.models.user import User
+from app.models.conversation import Conversation, Message
+from app.models.user import User, UserRole
 
 router = APIRouter()
 
 
 @router.get("/stats")
 async def get_admin_stats(
-    admin: User = Depends(get_current_admin),  # ✅ Requires ADMIN or SUPERADMIN
-    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get system statistics (admin only).
-
-    Regular users will get 403 Forbidden.
-    Admins and superadmins can access.
-    """
-    from app.models.conversation import Conversation, Message
-    from app.models.user import User
-
-    # Get counts
-    user_count = db.query(User).count()
-    conversation_count = db.query(Conversation).count()
-    message_count = db.query(Message).count()
-
-    # Count by role
-    from app.models.user import UserRole
+    user_count = (await db.execute(select(func.count(User.id)))).scalar_one()
+    conversation_count = (await db.execute(select(func.count(Conversation.id)))).scalar_one()
+    message_count = (await db.execute(select(func.count(Message.id)))).scalar_one()
 
     users_by_role = {}
     for role in UserRole:
-        count = db.query(User).filter(User.role == role).count()
+        count = (
+            await db.execute(select(func.count(User.id)).where(User.role == role))
+        ).scalar_one()
         users_by_role[role.value] = count
 
     return {
@@ -53,11 +42,12 @@ async def get_admin_stats(
 
 
 @router.get("/users")
-async def list_all_users(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
-    """
-    List all users (admin only).
-    """
-    users = db.query(User).all()
+async def list_all_users(
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User))
+    users = result.scalars().all()
 
     return {
         "total": len(users),
@@ -78,18 +68,12 @@ async def list_all_users(admin: User = Depends(get_current_admin), db: Session =
 @router.post("/promote/{user_id}")
 async def promote_user(
     user_id: int,
-    superadmin: User = Depends(get_current_superadmin),  # ✅ SUPERADMIN ONLY!
-    db: Session = Depends(get_db),
+    superadmin: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Promote a user to admin (superadmin only).
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
 
-    Regular users and even admins cannot access this!
-    Only superadmins can promote users.
-    """
-    from app.models.user import UserRole
-
-    user = db.query(User).filter(User.id == user_id).first()
     if not user:
         from fastapi import HTTPException
 
@@ -97,7 +81,7 @@ async def promote_user(
 
     old_role = user.role.value
     user.role = UserRole.ADMIN
-    db.commit()
+    await db.commit()
 
     return {
         "message": f"User {user.username} promoted from {old_role} to admin",
