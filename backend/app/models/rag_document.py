@@ -15,6 +15,7 @@ class RAGDocument(Base):
     topic = Column(String(50), nullable=False, index=True)  # 🆕 ADDED
 
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    task_id = Column(String(255), nullable=True)
     is_public = Column(Boolean, default=False, nullable=False, index=True)
 
     collection_name = Column(String(100), nullable=False)
