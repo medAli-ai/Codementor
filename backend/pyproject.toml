@@ -18,6 +18,7 @@ dependencies = [
     "ollama>=0.6.1",
     "passlib[bcrypt]>=1.7.4",
     "asyncpg>=0.30.0",
+    "psycopg2-binary>=2.9.11",
     "pydantic-settings>=2.12.0",
     "pydantic[email]>=2.12.5",
     "pyjwt>=2.8.0",
