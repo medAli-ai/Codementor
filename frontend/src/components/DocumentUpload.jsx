@@ -5,13 +5,14 @@
 // Matches existing color scheme: blue-600, gray-xxx, white bg
 // ============================================================
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { documentsAPI, DOCUMENT_TOPICS } from '../services/api';
 
 const STATE = {
   IDLE:      'idle',
   DRAGGING:  'dragging',
   UPLOADING: 'uploading',
+  PROCESSING: 'processing',
   SUCCESS:   'success',
   ERROR:     'error',
 };
@@ -31,10 +32,13 @@ function DocumentUpload({ onSuccess, onCancel }) {
   const [progress,      setProgress]      = useState(0);
   const [errorMessage,  setErrorMessage]  = useState('');
   const [uploadedDoc,   setUploadedDoc]   = useState(null);
+  const [taskStage,     setTaskStage]     = useState('');
+const [taskDetail,    setTaskDetail]    = useState('');
 
   // dragCounter prevents flicker when hovering over child elements
   const dragCounter = useRef(0);
   const fileInputRef = useRef(null);
+  const pollRef      = useRef(null);
 
   // ── Drag handlers ─────────────────────────────────────────────────────────
   const handleDragEnter = useCallback((e) => {
@@ -50,6 +54,12 @@ function DocumentUpload({ onSuccess, onCancel }) {
   }, []);
 
   const handleDragOver  = useCallback((e) => { e.preventDefault(); }, []);
+
+  useEffect(() => {
+  return () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+  };
+}, []);
 
    // ── File validation ───────────────────────────────────────────────────────
   const validateAndSet = (f) => {
@@ -76,36 +86,68 @@ function DocumentUpload({ onSuccess, onCancel }) {
     if (dropped) validateAndSet(dropped);
   }, []);
 
- 
+ const handleReset = () => {
+  if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  setFile(null); setTopic(''); setTitle(''); setIsPublic(false);
+  setUploadState(STATE.IDLE); setProgress(0);
+  setErrorMessage(''); setUploadedDoc(null);
+  setTaskStage(''); setTaskDetail('');
+  if (fileInputRef.current) fileInputRef.current.value = '';
+};
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!file || !topic) return;
+  e.preventDefault();
+  if (!file || !topic) return;
 
-    setUploadState(STATE.UPLOADING);
-    setProgress(0);
+  setUploadState(STATE.UPLOADING);
+  setProgress(0);
 
-    try {
-      const response = await documentsAPI.upload(file, topic, title, isPublic, setProgress);
-      setUploadedDoc(response.data);
+  try {
+    const response = await documentsAPI.upload(file, topic, title, isPublic, setProgress);
+    const { task_id } = response.data;
+
+    setUploadedDoc(response.data);
+
+    // If task queuing failed server-side, task_id will be null
+    if (!task_id) {
       setUploadState(STATE.SUCCESS);
       onSuccess?.(response.data);
-    } catch (err) {
-      const detail = err.response?.data?.detail;
-      const msg = Array.isArray(detail)
-        ? detail.map(e => e.msg).join(', ')
-        : detail || 'Upload failed. Please try again.';
-      setErrorMessage(msg);
+      return;
     }
-  };
 
-  const handleReset = () => {
-    setFile(null); setTopic(''); setTitle(''); setIsPublic(false);
-    setUploadState(STATE.IDLE); setProgress(0);
-    setErrorMessage(''); setUploadedDoc(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+    // Start polling task progress via Redis
+    setUploadState(STATE.PROCESSING);
+    setTaskStage('extracting');
+    setTaskDetail('Starting...');
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const { data } = await documentsAPI.getTaskStatus(task_id);
+
+        if (data.stage)  setTaskStage(data.stage);
+        if (data.detail) setTaskDetail(data.detail);
+
+        if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          setUploadState(STATE.SUCCESS);
+          onSuccess?.(response.data);
+        }
+      } catch {
+        // polling hiccup — try again next tick
+      }
+    }, 2000);
+
+  } catch (err) {
+    const detail = err.response?.data?.detail;
+    const msg = Array.isArray(detail)
+      ? detail.map(e => e.msg).join(', ')
+      : detail || 'Upload failed. Please try again.';
+    setErrorMessage(msg);
+    setUploadState(STATE.ERROR);
+  }
+};
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -172,8 +214,50 @@ function DocumentUpload({ onSuccess, onCancel }) {
         </div>
       )}
 
+      {/* ── PROCESSING (Celery task running) ───────────────────────────── */}
+{uploadState === STATE.PROCESSING && (() => {
+  const stages = ['extracting', 'chunking', 'embedding', 'uploading'];  // ← defined once
+  const currentIdx = stages.indexOf(taskStage);
+  return (
+    <div className="flex flex-col items-center gap-4 py-8">
+      <div className="text-3xl animate-spin">⚙️</div>
+      <div className="w-full">
+
+        {/* Stage steps */}
+        <div className="flex justify-between mb-4">
+          {stages.map((stage, stageIdx) => {             // ← stageIdx from map directly
+            const done   = stageIdx < currentIdx;
+            const active = stageIdx === currentIdx;
+            return (
+              <div key={stage} className="flex flex-col items-center gap-1">
+                <div className={`
+                  w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+                  transition-colors duration-300
+                  ${done   ? 'bg-green-500 text-white' : ''}
+                  ${active ? 'bg-blue-600 text-white animate-pulse' : ''}
+                  ${!done && !active ? 'bg-gray-200 text-gray-400' : ''}
+                `}>
+                  {done ? '✓' : stageIdx + 1}
+                </div>
+                <span className={`text-xs capitalize ${active ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                  {stage}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Detail text */}
+        <p className="text-xs text-gray-500 text-center">{taskDetail}</p>
+
+      </div>
+    </div>
+  );
+})()}
       {/* ── FORM (idle / dragging / error) ──────────────────────────────── */}
-      {uploadState !== STATE.SUCCESS && uploadState !== STATE.UPLOADING && (
+      {uploadState !== STATE.SUCCESS &&
+ uploadState !== STATE.UPLOADING &&
+ uploadState !== STATE.PROCESSING &&  (
         <form onSubmit={handleSubmit} className="space-y-4">
 
           {/* Drop zone */}

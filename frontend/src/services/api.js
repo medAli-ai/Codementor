@@ -347,6 +347,7 @@ export const documentsAPI = {
 
   get:    (id) => api.get(`/api/rag/documents/${id}`),
   delete: (id) => api.delete(`/api/rag/documents/${id}`),
+  getTaskStatus: (taskId) => api.get(`/api/rag/tasks/${taskId}/status`)
 };
 
 export default api;
