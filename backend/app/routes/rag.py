@@ -10,6 +10,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,7 @@ from app.schemas.rag import (
     DocumentStatus,
     SearchResponse,
     SearchResultItem,
+    TaskStatusResponse,
     TopicEnum,
     UploadResponse,
 )
@@ -142,9 +144,18 @@ async def upload_document(
 
     # 6. Queue Celery task for background processing
     try:
-        celery_app.send_task(
-            "app.tasks.rag_tasks.process_pdf_task", args=[document.id, str(file_path)]
+        task = celery_app.send_task(
+            "app.tasks.rag_tasks.process_pdf_task",
+            args=[document.id, str(file_path)],
+            kwargs={
+                "user_id": document.user_id,
+                "title": document.title,
+                "topic": document.topic,
+                "is_public": document.is_public,
+            },
         )
+        document.task_id = task.id
+        db.commit()
         logger.info(f"   ✅ Celery task queued for document {document.id}")
 
     except Exception as e:
@@ -161,6 +172,28 @@ async def upload_document(
         filename=document.filename,
         topic=document.topic,
         status=document.status,
+        task_id=document.task_id,
+    )
+
+
+@router.get("/tasks/{task_id}/status", response_model=TaskStatusResponse)
+async def get_task_status(
+    task_id: str,
+    _: User = Depends(get_current_user),
+):
+    result = AsyncResult(task_id, app=celery_app)
+    state = result.state
+    stage = detail = None
+
+    if state == "PROGRESS" and isinstance(result.info, dict):
+        stage = result.info.get("stage")
+        detail = result.info.get("detail")
+
+    return TaskStatusResponse(
+        task_id=task_id,
+        state=state,
+        stage=stage,
+        detail=detail,
     )
 
 
