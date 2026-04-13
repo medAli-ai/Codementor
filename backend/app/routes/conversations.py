@@ -1,7 +1,9 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_current_active_user
 from app.db.session import get_db
@@ -17,59 +19,50 @@ router = APIRouter()
 
 
 @router.post("/", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
-def create_conversation(
+async def create_conversation(
     conversation: ConversationCreate,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Create a new conversation for the current user
-    """
     db_conversation = Conversation(title=conversation.title, user_id=current_user.id)
-
     db.add(db_conversation)
-    db.commit()
-    db.refresh(db_conversation)
-
+    await db.commit()
+    await db.refresh(db_conversation)
     return db_conversation
 
 
 @router.get("/", response_model=List[ConversationResponse])
-def list_conversations(
+async def list_conversations(
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     skip: int = 0,
     limit: int = 100,
 ):
-    """
-    Get all conversations for the current user
-    """
-    conversations = (
-        db.query(Conversation)
-        .filter(Conversation.user_id == current_user.id)
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.user_id == current_user.id)
         .order_by(Conversation.updated_at.desc())
         .offset(skip)
         .limit(limit)
-        .all()
     )
-
-    return conversations
+    return result.scalars().all()
 
 
 @router.get("/{conversation_id}", response_model=ConversationWithMessages)
-def get_conversation(
+async def get_conversation(
     conversation_id: int,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get a specific conversation with all its messages
-    """
-    conversation = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.user_id == current_user.id)
-        .first()
+    result = await db.execute(
+        select(Conversation)
+        .where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+        .options(selectinload(Conversation.messages))
     )
+    conversation = result.scalar_one_or_none()
 
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
@@ -78,20 +71,19 @@ def get_conversation(
 
 
 @router.patch("/{conversation_id}", response_model=ConversationResponse)
-def update_conversation(
+async def update_conversation(
     conversation_id: int,
     conversation_update: ConversationUpdate,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Update a conversation (e.g., change title)
-    """
-    conversation = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.user_id == current_user.id)
-        .first()
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
     )
+    conversation = result.scalar_one_or_none()
 
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
@@ -99,31 +91,28 @@ def update_conversation(
     if conversation_update.title is not None:
         conversation.title = conversation_update.title
 
-    db.commit()
-    db.refresh(conversation)
-
+    await db.commit()
+    await db.refresh(conversation)
     return conversation
 
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_conversation(
+async def delete_conversation(
     conversation_id: int,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Delete a conversation and all its messages
-    """
-    conversation = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.user_id == current_user.id)
-        .first()
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
     )
+    conversation = result.scalar_one_or_none()
 
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
 
-    db.delete(conversation)
-    db.commit()
-
+    await db.delete(conversation)
+    await db.commit()
     return None
