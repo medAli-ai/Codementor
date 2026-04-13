@@ -19,44 +19,37 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(bind=True, max_retries=3)
-def process_pdf_task(self, document_id: int, file_path: str):
+def process_pdf_task(
+    self,
+    document_id: int,
+    file_path: str,
+    user_id: int,
+    title: str,
+    topic: str,
+    is_public: bool,
+):
     """
-    Process PDF file: extract text, chunk, embed, and index.
-
-    Args:
-        document_id: RAGDocument ID in database
-        file_path: Path to uploaded PDF file
-
-    This task runs in background (Celery worker).
+    Process PDF file: extract text, chunk, embed, and index into Qdrant.
+    Metadata is passed directly from the route — no DB read needed at startup.
+    Progress is tracked via Celery state in Redis.
+    Only terminal state (completed/failed) is written to Postgres.
     """
     db = SessionLocal()
 
     try:
         logger.info(f"📄 Processing document {document_id} from {file_path}")
 
-        # Get document from database
-        document = db.query(RAGDocument).filter(RAGDocument.id == document_id).first()
-
-        if not document:
-            logger.error(f"❌ Document {document_id} not found in database")
-            return
-
-        # Update status to processing
-        document.status = "processing"
-        db.commit()
-
         indexer = get_indexer()
 
-        pdf_metadata = {
-            "document_id": document.id,
-            "user_id": document.user_id,
-            "title": document.title,
-            "language": "java",  # Legacy field (TODO: remove)
-            "topic": document.topic,
-            "is_public": document.is_public,
+        metadata = {
+            "document_id": document_id,
+            "user_id": user_id,
+            "title": title,
+            "topic": topic,
+            "is_public": is_public,
         }
 
-        # ── Stage 1: Extract ─────────────────────────────────────────
+        # ── Stage 1: Extract ──────────────────────────────────────────
         self.update_state(
             state="PROGRESS",
             meta={
@@ -69,7 +62,7 @@ def process_pdf_task(self, document_id: int, file_path: str):
         if not elements:
             raise ValueError("No elements extracted from PDF")
 
-        # ── Stage 2: Chunk ───────────────────────────────────────────
+        # ── Stage 2: Chunk ────────────────────────────────────────────
         self.update_state(
             state="PROGRESS",
             meta={
@@ -82,7 +75,7 @@ def process_pdf_task(self, document_id: int, file_path: str):
         if not chunks:
             raise ValueError("No chunks generated from elements")
 
-        # ── Stage 3: Embed ───────────────────────────────────────────
+        # ── Stage 3: Embed ────────────────────────────────────────────
         self.update_state(
             state="PROGRESS",
             meta={
@@ -95,7 +88,7 @@ def process_pdf_task(self, document_id: int, file_path: str):
             chunk_texts, batch_size=settings.EMBEDDING_BATCH_SIZE, show_progress=True
         )
 
-        # ── Stage 4: Upload ──────────────────────────────────────────
+        # ── Stage 4: Upload ───────────────────────────────────────────
         self.update_state(
             state="PROGRESS",
             meta={
@@ -105,39 +98,46 @@ def process_pdf_task(self, document_id: int, file_path: str):
         )
         indexer._ensure_collection(settings.QDRANT_COLLECTION)
 
-        # Prepare and upload points
         points = []
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-            point_metadata = {
-                **pdf_metadata,
-                "chunk_index": i,
-                "chunk_text": chunk["text"],
-                "chunk_type": chunk["chunk_type"],
-                "page_numbers": chunk["page_numbers"],
-                "pages_count": pdf_meta["pages_count"],
-                "file_size_bytes": pdf_meta["file_size_bytes"],
-            }
             points.append(
-                PointStruct(id=str(uuid.uuid4()), vector=embedding.tolist(), payload=point_metadata)
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=embedding.tolist(),
+                    payload={
+                        **metadata,
+                        "chunk_index": i,
+                        "chunk_text": chunk["text"],
+                        "chunk_type": chunk["chunk_type"],
+                        "page_numbers": chunk["page_numbers"],
+                        "pages_count": pdf_meta["pages_count"],
+                        "file_size_bytes": pdf_meta["file_size_bytes"],
+                    },
+                )
             )
 
-        indexer.client.upsert(collection_name=settings.QDRANT_COLLECTION, points=points, wait=True)
+        indexer.client.upload_points(
+            collection_name=settings.QDRANT_COLLECTION,
+            points=points,
+            batch_size=256,
+            parallel=1,
+        )
 
         chunks_count = len(chunks)
         logger.info(f"✅ Indexed {chunks_count} chunks for document {document_id}")
 
-        # Update document status
-        document.status = "completed"
-        document.chunks_count = chunks_count
-        db.commit()
+        # ── Terminal write: success ───────────────────────────────────
+        document = db.query(RAGDocument).filter(RAGDocument.id == document_id).first()
+        if document:
+            document.status = "completed"
+            document.chunks_count = chunks_count
+            db.commit()
 
         logger.info(f"✅ Document {document_id} processed successfully")
 
     except Exception as e:
         logger.error(f"❌ Error processing document {document_id}: {e}")
 
-        # Attempt retry with exponential backoff.
-        # Only mark as "failed" when all retries are exhausted.
         try:
             countdown = 60 * (2**self.request.retries)
             logger.info(
@@ -146,8 +146,11 @@ def process_pdf_task(self, document_id: int, file_path: str):
                 f"next retry in {countdown}s"
             )
             self.retry(exc=e, countdown=countdown)
+
         except self.MaxRetriesExceededError:
             logger.error(f"❌ Max retries exceeded for document {document_id}")
+
+            # ── Terminal write: failure ───────────────────────────────
             try:
                 document = db.query(RAGDocument).filter(RAGDocument.id == document_id).first()
                 if document:
@@ -159,9 +162,3 @@ def process_pdf_task(self, document_id: int, file_path: str):
 
     finally:
         db.close()
-
-        # Clean up uploaded file (optional)
-        # import os
-        # if os.path.exists(file_path):
-        #     os.remove(file_path)
-        #     logger.info(f"🗑️  Cleaned up file: {file_path}")
