@@ -1,30 +1,34 @@
+from collections.abc import AsyncGenerator
+
 from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 
-# Create database engine
+# ── Sync engine — Celery tasks only ──────────────────────────────────────────
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_pre_ping=True,  # Verify connections before using
-    echo=settings.DEBUG,  # Log SQL queries in debug mode
+    pool_pre_ping=True,
+    echo=settings.DEBUG,
 )
-
-# Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# ── Async engine — FastAPI routes ─────────────────────────────────────────────
+async_url = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-def get_db():
-    """
-    Dependency that provides database session.
+async_engine = create_async_engine(
+    async_url,
+    pool_pre_ping=True,
+    echo=settings.DEBUG,
+)
+AsyncSessionLocal = async_sessionmaker(
+    async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
 
-    Usage in FastAPI routes:
-    @app.get("/users")
-    def get_users(db: Session = Depends(get_db)):
-        ...
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        yield session
