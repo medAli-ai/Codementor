@@ -86,6 +86,15 @@ class DocumentListResponse(BaseModel):
     page_size: int
 
 
+class TaskStatusResponse(BaseModel):
+    """Response from the task status endpoint."""
+
+    task_id: str
+    state: str
+    stage: Optional[str] = None
+    detail: Optional[str] = None
+
+
 class DocumentUploadRequest(BaseModel):
     """Request for document upload (form data)."""
 
