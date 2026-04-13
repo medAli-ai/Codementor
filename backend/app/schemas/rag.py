@@ -51,9 +51,17 @@ class UploadResponse(BaseModel):
     topic: str
     status: str
     message: str = "Document uploaded successfully. Processing in background."
+    task_id: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class TaskStatusResponse(BaseModel):
+    task_id: str
+    state: str  # PENDING | PROGRESS | SUCCESS | FAILURE
+    stage: Optional[str] = None  # extracting | chunking | embedding | uploading
+    detail: Optional[str] = None  # human-readable description
 
 
 class DocumentResponse(BaseModel):
