@@ -249,7 +249,7 @@ async def search_documents(
 ):
     retriever = get_retriever()
 
-    results = retriever.retrieve(
+    results = await retriever.aretrieve(
         query=q,
         user_id=current_user.id,
         top_k=top_k or settings.SEARCH_TOP_K,
@@ -291,7 +291,7 @@ async def get_chunk_preview(
         raise HTTPException(status_code=403, detail="Access denied")
 
     retriever = get_retriever()
-    result = retriever.retrieve_chunk_preview(document_id, chunk_index, window)
+    result = await retriever.aretrieve_chunk_preview(document_id, chunk_index, window)
 
     if not result:
         raise HTTPException(status_code=404, detail="Chunk not found")
