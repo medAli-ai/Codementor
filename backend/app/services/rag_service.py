@@ -389,6 +389,65 @@ class RAGService:
             # Fail gracefully - chat continues without RAG
             return None
 
+    async def aget_context(
+        self, query: str, user_id: int, conversation_context: Optional[bool] = None
+    ) -> Optional[Dict]:
+        """Async version of get_context(). Uses AsyncQdrantClient via aretrieve()."""
+        try:
+            if not self.is_programming_question(query):
+                if not conversation_context:
+                    logger.info("⏭️  Skipping RAG (not programming-related)")
+                    return None
+                logger.info(
+                    "🔄 Follow-up detected — attempting retrieval despite no programming keywords"
+                )
+
+            topic = self.detect_topic(query)
+
+            logger.info(f"🔍 [async] Retrieving context for user {user_id}...")
+            results = await self.retriever.aretrieve(
+                query=query,
+                user_id=user_id,
+                topic=topic,
+                top_k=settings.RAG_TOP_K,
+                score_threshold=settings.RAG_SCORE_THRESHOLD,
+            )
+
+            if not results:
+                logger.info("ℹ️  No relevant context found")
+                return None
+
+            context_text = self._format_context(results)
+
+            logger.info(
+                f"✅ Retrieved {len(results)} chunks from "
+                f"{len(set(r['document_id'] for r in results))} documents"
+            )
+
+            return {
+                "context": context_text,
+                "chunks_count": len(results),
+                "detected_topic": topic,
+                "sources": [
+                    {
+                        "title": r["title"],
+                        "document_id": r["document_id"],
+                        "score": r["score"],
+                        "page_numbers": r.get("page_numbers", []),
+                        "chunk_type": r.get("chunk_type", "prose"),
+                        "chunk_index": r.get("chunk_index", None),
+                    }
+                    for r in results
+                ],
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Error getting async context: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return None
+
     def _format_context(self, results: List[Dict]) -> str:
         """
         Format retrieved chunks into context for LLM.
