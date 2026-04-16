@@ -212,7 +212,7 @@ async def process_chat_message_stream(
 
     if use_rag:
         try:
-            rag_context = rag_service.get_context(
+            rag_context = await rag_service.aget_context(
                 query=user_message, user_id=user_id, conversation_context=recent_rag_active
             )
             if rag_context:
